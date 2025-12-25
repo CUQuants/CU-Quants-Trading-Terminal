@@ -1,0 +1,17 @@
+/* Main Layout Structure */
+.layout {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-black);
+}
+
+.mainContent {
+  margin-top: var(--ticker-height);
+  margin-left: var(--nav-width);
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--spacing-lg);
+}

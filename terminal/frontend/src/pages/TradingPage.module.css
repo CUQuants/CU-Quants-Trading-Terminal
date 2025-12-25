@@ -1,0 +1,134 @@
+/* Trading Page Styles */
+.tradingPage {
+  max-width: 1800px;
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-white);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--color-blue);
+}
+
+.tradingGrid {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.orderEntry {
+  min-width: 0;
+}
+
+.positions {
+  min-width: 0;
+}
+
+/* Order Form */
+.orderForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.formRow label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-white-70);
+  font-weight: 600;
+}
+
+.formRow input,
+.formRow select {
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  color: var(--color-white);
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.formRow input:focus,
+.formRow select:focus {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 1px var(--color-blue);
+  outline: none;
+}
+
+/* Button Group for Buy/Sell */
+.buttonGroup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.sideButton {
+  padding: var(--spacing-sm);
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  color: var(--color-white);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sideButton:hover {
+  border-color: var(--color-white-50);
+}
+
+.buyButton.active {
+  background-color: var(--color-green);
+  color: var(--color-black);
+  border-color: var(--color-green);
+}
+
+.sellButton.active {
+  background-color: var(--color-red);
+  color: var(--color-white);
+  border-color: var(--color-red);
+}
+
+.submitButton {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background-color: var(--color-blue);
+  border: 1px solid var(--color-blue);
+  color: var(--color-white);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.submitButton:hover {
+  background-color: var(--color-blue-light);
+  border-color: var(--color-blue-light);
+}
+
+.submitButton:active {
+  background-color: var(--color-blue-dark);
+  border-color: var(--color-blue-dark);
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .tradingGrid {
+    grid-template-columns: 1fr;
+  }
+}

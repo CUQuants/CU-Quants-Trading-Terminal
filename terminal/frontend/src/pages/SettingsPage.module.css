@@ -1,0 +1,195 @@
+/* Settings Page Styles */
+.settingsPage {
+  max-width: 1000px;
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-white);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--color-blue);
+}
+
+.settingsForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.description {
+  color: var(--color-white-70);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+  padding: var(--spacing-md);
+  background-color: rgba(255, 255, 255, 0.05);
+  border-left: 2px solid var(--color-blue);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.formGroup label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-white-70);
+  font-weight: 600;
+}
+
+.inputWrapper {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  color: var(--color-white);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.input:focus {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 1px var(--color-blue);
+  outline: none;
+}
+
+.toggleButton {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  color: var(--color-white-70);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 60px;
+}
+
+.toggleButton:hover {
+  border-color: var(--color-blue);
+  color: var(--color-white);
+}
+
+.buttonGroup {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.saveButton {
+  flex: 1;
+  padding: var(--spacing-md);
+  background-color: var(--color-blue);
+  border: 1px solid var(--color-blue);
+  color: var(--color-white);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.saveButton:hover {
+  background-color: var(--color-blue-light);
+  border-color: var(--color-blue-light);
+}
+
+.clearButton {
+  padding: var(--spacing-md) var(--spacing-xl);
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  color: var(--color-white);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clearButton:hover {
+  border-color: var(--color-red);
+  color: var(--color-red);
+}
+
+.successMessage {
+  padding: var(--spacing-md);
+  background-color: rgba(0, 255, 0, 0.1);
+  border: 1px solid var(--color-green);
+  color: var(--color-green);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Status Grid */
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.statusItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.statusLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-white-70);
+}
+
+.statusValue {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-white);
+}
+
+/* Info Grid */
+.infoGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-white-30);
+}
+
+.infoRow:last-child {
+  border-bottom: none;
+}
+
+.infoLabel {
+  font-size: 12px;
+  color: var(--color-white-70);
+}
+
+.infoValue {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-white);
+}

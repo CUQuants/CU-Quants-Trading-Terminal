@@ -1,0 +1,33 @@
+/* Panel Component - Container for sections */
+.panel {
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  margin-bottom: var(--spacing-lg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-blue);
+  background-color: var(--color-black);
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--color-white);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.content {
+  padding: var(--spacing-lg);
+}
