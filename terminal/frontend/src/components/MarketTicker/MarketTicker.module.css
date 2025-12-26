@@ -11,6 +11,57 @@
   z-index: 1000;
 }
 
+.connectionStatus {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: var(--color-blue);
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 10;
+}
+
+.noCredentials {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background-color: var(--color-black);
+  z-index: 10;
+}
+
+.warningIcon {
+  font-size: 16px;
+}
+
+.warningText {
+  color: var(--color-white);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settingsLink {
+  color: var(--color-blue);
+  text-decoration: underline;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.settingsLink:hover {
+  color: #0088ff;
+}
+
 .tickerTrack {
   display: flex;
   height: 100%;

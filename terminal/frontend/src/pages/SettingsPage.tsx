@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Panel from '../components/Panel/Panel'
+import { krakenAPI } from '../services/krakenAPI'
+import { krakenWS } from '../services/krakenWebSocket'
 import styles from './SettingsPage.module.css'
+import { uiLogger } from '../utils/logger'
 
 interface ApiConfig {
   apiKey: string
@@ -8,23 +11,79 @@ interface ApiConfig {
 }
 
 const SettingsPage = () => {
-  const [apiConfig, setApiConfig] = useState<ApiConfig>({
-    apiKey: '',
-    apiSecret: '',
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(() => {
+    uiLogger.info('SettingsPage: Loading API config from localStorage')
+    // Load from localStorage on mount
+    const stored = localStorage.getItem('apiConfig')
+    if (stored) {
+      try {
+        const config = JSON.parse(stored)
+        uiLogger.info('SettingsPage: API config loaded', { 
+          hasApiKey: !!config.apiKey,
+          hasApiSecret: !!config.apiSecret 
+        })
+        return config
+      } catch (error) {
+        uiLogger.error('SettingsPage: Failed to parse stored API config', error)
+        return { apiKey: '', apiSecret: '' }
+      }
+    }
+    uiLogger.info('SettingsPage: No stored API config found')
+    return { apiKey: '', apiSecret: '' }
   })
   
   const [showApiKey, setShowApiKey] = useState(false)
   const [showApiSecret, setShowApiSecret] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    uiLogger.info('SettingsPage: Component mounted')
+  }, [])
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // In production, this would securely store the API credentials
-    console.log('Saving API configuration...')
+    uiLogger.info('SettingsPage: Saving API credentials', {
+      apiKeyLength: apiConfig.apiKey.length,
+      apiSecretLength: apiConfig.apiSecret.length,
+    })
+    
+    // Save to localStorage
     localStorage.setItem('apiConfig', JSON.stringify(apiConfig))
     
+    // Update API service
+    krakenAPI.setCredentials(apiConfig.apiKey, apiConfig.apiSecret)
+    
     setSaved(true)
+    setConnectionStatus('connecting')
+    
+    uiLogger.info('SettingsPage: Testing connection with getBalance()')
+    
+    // Test connection by fetching balance
+    try {
+      const result = await krakenAPI.getBalance()
+      if (result.error && result.error.length > 0) {
+        uiLogger.error('SettingsPage: API connection test failed', result.error)
+        setConnectionStatus('disconnected')
+      } else {
+        uiLogger.info('SettingsPage: API connection test successful', {
+          balanceKeys: Object.keys(result.result || {}).length
+        })
+        setConnectionStatus('connected')
+        
+        // Connect WebSocket for private feeds
+        try {
+          await krakenWS.connectPrivate(apiConfig.apiKey, apiConfig.apiSecret)
+        } catch (err) {
+          console.error('WebSocket connection failed:', err)
+        }
+      }
+    } catch (err) {
+      console.error('Connection test failed:', err)
+      setConnectionStatus('disconnected')
+    }
+    
     setTimeout(() => setSaved(false), 3000)
   }
 
@@ -107,14 +166,26 @@ const SettingsPage = () => {
         <div className={styles.statusGrid}>
           <div className={styles.statusItem}>
             <span className={styles.statusLabel}>API Connection</span>
-            <span className={styles.statusValue} style={{ color: 'var(--color-green)' }}>
-              CONNECTED
+            <span 
+              className={styles.statusValue} 
+              style={{ 
+                color: connectionStatus === 'connected' 
+                  ? 'var(--color-green)' 
+                  : connectionStatus === 'connecting'
+                  ? 'var(--color-blue)'
+                  : 'var(--color-red)'
+              }}
+            >
+              {connectionStatus.toUpperCase()}
             </span>
           </div>
           <div className={styles.statusItem}>
             <span className={styles.statusLabel}>WebSocket Status</span>
-            <span className={styles.statusValue} style={{ color: 'var(--color-green)' }}>
-              ACTIVE
+            <span 
+              className={styles.statusValue} 
+              style={{ color: krakenWS.isConnected() ? 'var(--color-green)' : 'var(--color-red)' }}
+            >
+              {krakenWS.isConnected() ? 'ACTIVE' : 'DISCONNECTED'}
             </span>
           </div>
           <div className={styles.statusItem}>
@@ -124,9 +195,9 @@ const SettingsPage = () => {
             </span>
           </div>
           <div className={styles.statusItem}>
-            <span className={styles.statusLabel}>Rate Limit</span>
+            <span className={styles.statusLabel}>Credentials</span>
             <span className={styles.statusValue}>
-              145/180
+              {krakenAPI.hasCredentials() ? 'CONFIGURED' : 'NOT SET'}
             </span>
           </div>
         </div>
