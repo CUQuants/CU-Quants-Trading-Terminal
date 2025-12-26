@@ -1,6 +1,7 @@
 /* Home Page Styles */
 .homePage {
   max-width: 1600px;
+  padding: 20px;
 }
 
 .pageTitle {
@@ -12,6 +13,74 @@
   margin-bottom: var(--spacing-xl);
   padding-bottom: var(--spacing-md);
   border-bottom: 2px solid var(--color-blue);
+}
+
+.mainLayout {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 20px;
+  min-height: 600px;
+}
+
+.watchlistPanel {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+}
+
+.contentPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.instructions {
+  padding: 20px;
+  color: var(--color-text-primary);
+}
+
+.instructions h3 {
+  margin: 0 0 16px 0;
+  color: var(--color-blue);
+  font-size: 18px;
+}
+
+.instructions h4 {
+  margin: 20px 0 12px 0;
+  color: var(--color-white);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.instructions p {
+  margin: 0 0 16px 0;
+  line-height: 1.6;
+  color: var(--color-white-70);
+}
+
+.instructions ul,
+.instructions ol {
+  margin: 0 0 16px 0;
+  padding-left: 24px;
+  line-height: 1.8;
+  color: var(--color-white-70);
+}
+
+.instructions li {
+  margin-bottom: 8px;
+}
+
+.instructions strong {
+  color: var(--color-white);
+}
+
+.tip {
+  margin-top: 24px;
+  padding: 16px;
+  background: rgba(30, 144, 255, 0.1);
+  border-left: 3px solid var(--color-blue);
+  color: var(--color-white-70);
+  line-height: 1.6;
 }
 
 .statsGrid {

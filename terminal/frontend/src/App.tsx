@@ -1,5 +1,6 @@
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
+import { MarketProvider } from './contexts/MarketContext'
 import Layout from './components/Layout/Layout'
 import HomePage from './pages/HomePage'
 import TradingPage from './pages/TradingPage'
@@ -43,7 +44,7 @@ function App() {
     uiLogger.debug('App: Rendering application', { path: location.pathname })
     
     return (
-      <>
+      <MarketProvider>
         <Layout>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -52,7 +53,7 @@ function App() {
           </Routes>
         </Layout>
         <DebugPanel />
-      </>
+      </MarketProvider>
     )
   } catch (error) {
     uiLogger.error('App: Render failed', error)

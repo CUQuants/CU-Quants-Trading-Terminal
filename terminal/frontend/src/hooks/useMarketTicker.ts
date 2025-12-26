@@ -26,20 +26,15 @@ export const useMarketTicker = (initialPairs: string[] = []): UseMarketTickerRet
       initialPairs 
     })
     
-    // Don't connect if no pairs specified (means API not configured)
-    if (initialPairs.length === 0) {
-      uiLogger.info('useMarketTicker: No pairs specified, skipping WebSocket connection')
-      return
-    }
-    
-    // Connect to WebSocket
+    // Always connect to public WebSocket (no credentials needed)
+    // This matches main.py which uses public endpoints without authentication
     krakenWS.connectPublic()
       .then(() => {
         uiLogger.info('useMarketTicker: WebSocket connected successfully')
         setIsConnected(true)
         setError(null)
         
-        // Subscribe to initial pairs
+        // Subscribe to initial pairs if provided
         if (initialPairs.length > 0) {
           uiLogger.info('useMarketTicker: Subscribing to initial pairs', { 
             pairs: initialPairs 

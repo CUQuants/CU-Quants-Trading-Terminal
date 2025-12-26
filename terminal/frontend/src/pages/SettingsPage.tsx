@@ -36,9 +36,17 @@ const SettingsPage = () => {
   const [showApiSecret, setShowApiSecret] = useState(false)
   const [saved, setSaved] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
+  const [wsConnected, setWsConnected] = useState(false)
 
   useEffect(() => {
     uiLogger.info('SettingsPage: Component mounted')
+    
+    // Update WebSocket status every 500ms
+    const interval = setInterval(() => {
+      setWsConnected(krakenWS.isConnected())
+    }, 500)
+    
+    return () => clearInterval(interval)
   }, [])
 
   const handleSave = async (e: React.FormEvent) => {
@@ -58,29 +66,47 @@ const SettingsPage = () => {
     setSaved(true)
     setConnectionStatus('connecting')
     
-    uiLogger.info('SettingsPage: Testing connection with getBalance()')
+    uiLogger.info('SettingsPage: Testing connection with public endpoint first')
     
-    // Test connection by fetching balance
+    // Test connection using public endpoint first (like main.py does)
     try {
-      const result = await krakenAPI.getBalance()
-      if (result.error && result.error.length > 0) {
-        uiLogger.error('SettingsPage: API connection test failed', result.error)
+      const tickerResult = await krakenAPI.getTicker('XXBTZUSD') // BTC/USD ticker test
+      if (tickerResult.error && tickerResult.error.length > 0) {
+        uiLogger.error('SettingsPage: Public API test failed', tickerResult.error)
         setConnectionStatus('disconnected')
-      } else {
-        uiLogger.info('SettingsPage: API connection test successful', {
-          balanceKeys: Object.keys(result.result || {}).length
-        })
-        setConnectionStatus('connected')
+        return
+      }
+      
+      uiLogger.info('SettingsPage: Public API connection successful')
+      
+      // If credentials provided, test private endpoint
+      if (apiConfig.apiKey && apiConfig.apiSecret) {
+        uiLogger.info('SettingsPage: Testing private API with getBalance()')
+        const balanceResult = await krakenAPI.getBalance()
         
-        // Connect WebSocket for private feeds
-        try {
-          await krakenWS.connectPrivate(apiConfig.apiKey, apiConfig.apiSecret)
-        } catch (err) {
-          console.error('WebSocket connection failed:', err)
+        if (balanceResult.error && balanceResult.error.length > 0) {
+          uiLogger.error('SettingsPage: Private API connection test failed', balanceResult.error)
+          setConnectionStatus('disconnected')
+        } else {
+          uiLogger.info('SettingsPage: Private API connection test successful', {
+            balanceKeys: Object.keys(balanceResult.result || {}).length
+          })
+          setConnectionStatus('connected')
+          
+          // Connect WebSocket for private feeds
+          try {
+            await krakenWS.connectPrivate(apiConfig.apiKey, apiConfig.apiSecret)
+          } catch (err) {
+            uiLogger.error('SettingsPage: Private WebSocket connection failed', err)
+          }
         }
+      } else {
+        // No credentials, but public connection works
+        uiLogger.info('SettingsPage: No credentials provided, public API only')
+        setConnectionStatus('connected')
       }
     } catch (err) {
-      console.error('Connection test failed:', err)
+      uiLogger.error('SettingsPage: Connection test failed', err)
       setConnectionStatus('disconnected')
     }
     
@@ -183,9 +209,9 @@ const SettingsPage = () => {
             <span className={styles.statusLabel}>WebSocket Status</span>
             <span 
               className={styles.statusValue} 
-              style={{ color: krakenWS.isConnected() ? 'var(--color-green)' : 'var(--color-red)' }}
+              style={{ color: wsConnected ? 'var(--color-green)' : 'var(--color-red)' }}
             >
-              {krakenWS.isConnected() ? 'ACTIVE' : 'DISCONNECTED'}
+              {wsConnected ? 'ACTIVE' : 'DISCONNECTED'}
             </span>
           </div>
           <div className={styles.statusItem}>
