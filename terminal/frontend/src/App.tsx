@@ -5,6 +5,9 @@ import Layout from './components/Layout/Layout'
 import HomePage from './pages/HomePage'
 import TradingPage from './pages/TradingPage'
 import SettingsPage from './pages/SettingsPage'
+import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import LogoutPage from './pages/LogoutPage'
 import DebugPanel from './components/DebugPanel/DebugPanel'
 import { uiLogger } from './utils/logger'
 
@@ -24,12 +27,18 @@ function App() {
       const hasHomePage = !!HomePage
       const hasTradingPage = !!TradingPage
       const hasSettingsPage = !!SettingsPage
+      const hasLoginPage = !!LoginPage
+      const hasRegisterPage = !!RegisterPage
+      const hasLogoutPage = !!LogoutPage
       
       uiLogger.info('App: Component imports verified', {
         Layout: hasLayout,
         HomePage: hasHomePage,
         TradingPage: hasTradingPage,
         SettingsPage: hasSettingsPage,
+        LoginPage: hasLoginPage,
+        RegisterPage: hasRegisterPage,
+        LogoutPage: hasLogoutPage,
       })
     } catch (error) {
       uiLogger.error('App: Failed to verify component imports', error)
@@ -50,6 +59,9 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/trading" element={<TradingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/logout" element={<LogoutPage />} />
           </Routes>
         </Layout>
         <DebugPanel />
