@@ -3,10 +3,16 @@
 **Bloomberg-Style Professional Trading Interface**  
 **December 25, 2025**
 
+## ⚠️ IMPORTANT: Backend Not Implemented
+
+**The backend server is not yet built.** The frontend currently uses stub services that return mock data and log warnings to the console. No real trading functionality is available until the backend is implemented.
+
+**See:** `../backend/TODO.md` for the complete backend implementation plan.
+
 ## TLDR 
 For running use:
 - ./install.sh
-- 
+- npm run dev
 
 ## Overview
 
