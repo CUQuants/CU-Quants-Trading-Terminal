@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # React/Vite Frontend
+  frontend:
+    build:
+      context: ./terminal/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source for hot-reload during development
+      - ./terminal/frontend/src:/app/src
+      - ./terminal/frontend/index.html:/app/index.html
+    environment:
+      - NODE_ENV=development
+    networks:
+      - trading-network
+    restart: unless-stopped
+
+  # C++ Backend (Placeholder)
+  backend:
+    build:
+      context: ./terminal/backend
+      dockerfile: Dockerfile
+    # ports:
+    #   - "8080:8080"  # Uncomment when backend is implemented
+    environment:
+      - ENV=development
+    networks:
+      - trading-network
+    profiles:
+      - backend  # Won't start by default, use: docker compose --profile backend up
+
+networks:
+  trading-network:
+    driver: bridge
