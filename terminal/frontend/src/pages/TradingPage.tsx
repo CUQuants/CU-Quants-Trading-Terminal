@@ -186,6 +186,7 @@ const TradingPage = () => {
               <div className={styles.formRow}>
                 <label>Symbol</label>
                 <select 
+                /* NEED TO CHNAGE THIS to pairs we trade */
                   value={orderForm.symbol}
                   onChange={(e) => setOrderForm({ ...orderForm, symbol: e.target.value })}
                 >
