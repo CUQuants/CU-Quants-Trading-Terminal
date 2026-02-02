@@ -75,3 +75,9 @@
 .sidebar.expanded .label {
   opacity: 1;
 }
+
+.separator {
+  height: 1px;
+  background-color: var(--color-white-30);
+  margin: var(--spacing-md) var(--spacing-md);
+}

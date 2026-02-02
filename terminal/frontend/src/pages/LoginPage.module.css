@@ -1,0 +1,130 @@
+/* Auth Page Shared Styles */
+.authPage {
+  max-width: 480px;
+  margin: 0 auto;
+  padding-top: var(--spacing-xl);
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-white);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--color-blue);
+  text-align: center;
+}
+
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.formGroup label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-white-70);
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  background-color: var(--color-black);
+  border: 1px solid var(--color-white-30);
+  color: var(--color-white);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.input:focus {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 1px var(--color-blue);
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--color-white-30);
+}
+
+.submitButton {
+  width: 100%;
+  padding: var(--spacing-md);
+  background-color: var(--color-blue);
+  border: 1px solid var(--color-blue);
+  color: var(--color-white);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: var(--spacing-md);
+}
+
+.submitButton:hover {
+  background-color: var(--color-blue-light);
+  border-color: var(--color-blue-light);
+}
+
+.submitButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.linkText {
+  text-align: center;
+  color: var(--color-white-70);
+  font-size: 13px;
+  margin-top: var(--spacing-md);
+}
+
+.linkText a {
+  color: var(--color-blue);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.linkText a:hover {
+  color: var(--color-blue-light);
+  text-decoration: underline;
+}
+
+.errorMessage {
+  padding: var(--spacing-md);
+  background-color: rgba(255, 0, 0, 0.1);
+  border: 1px solid var(--color-red);
+  color: var(--color-red);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.successMessage {
+  padding: var(--spacing-md);
+  background-color: rgba(0, 255, 0, 0.1);
+  border: 1px solid var(--color-green);
+  color: var(--color-green);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.placeholderNotice {
+  color: var(--color-white-50);
+  font-size: 11px;
+  line-height: 1.6;
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background-color: rgba(255, 255, 255, 0.05);
+  border-left: 2px solid var(--color-blue);
+  text-align: center;
+}
