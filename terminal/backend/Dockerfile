@@ -1,19 +1,16 @@
-# Backend Dockerfile - C++ Placeholder
-# This is a placeholder for the future C++ backend
-
-FROM alpine:latest
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install build tools for C++ development
-RUN apk add --no-cache \
-    g++ \
-    cmake \
-    make \
-    git
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Placeholder: Copy source files when available
-# COPY . .
+# Copy source code
+COPY *.py .
 
-# Placeholder command - will be replaced with actual backend
-CMD ["echo", "Backend not yet implemented. This is a placeholder container."]
+# Expose port
+EXPOSE 8080
+
+# Run the server
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

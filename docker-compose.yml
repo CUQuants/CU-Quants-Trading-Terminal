@@ -18,19 +18,18 @@ services:
       - trading-network
     restart: unless-stopped
 
-  # C++ Backend (Placeholder)
+  # Python Backend - Kraken WebSocket Ticker Service
   backend:
     build:
       context: ./terminal/backend
       dockerfile: Dockerfile
-    # ports:
-    #   - "8080:8080"  # Uncomment when backend is implemented
+    ports:
+      - "8080:8080"
     environment:
       - ENV=development
     networks:
       - trading-network
-    profiles:
-      - backend  # Won't start by default, use: docker compose --profile backend up
+    restart: unless-stopped
 
 networks:
   trading-network:
