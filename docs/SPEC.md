@@ -288,7 +288,7 @@ Errors are categorized into three types with distinct UX handling:
 
 ### Key Component Responsibilities
 
-**`OrderbookRow`** — Consumes exchange context to read `getOrderbook(pair)`. Renders bid/ask levels. On click, opens `OrderPanel` for that exchange/pair.
+**`OrderbookRow`** — Consumes exchange context to read the orderbook. Renders bid/ask levels. On click, opens `OrderPanel` for that exchange/pair.
 
 **`OrderPanel`** — Renders `OrderList` and `OrderPlacementForm` for a specific exchange/pair. Mounts `useOrders` hook. Passes `refetch` down to child components.
 
@@ -302,9 +302,11 @@ Errors are categorized into three types with distinct UX handling:
 
 ## Authentication & API Keys
 
-API keys are never stored or used in the browser. All authenticated REST requests (order fetch, placement, cancellation) are proxied through a FastAPI server that holds keys in environment variables and handles HMAC request signing. The specific implementation detail for this will be specified later.
+API keys are never stored or used in the browser. All authenticated REST requests (order fetch, placement, cancellation) are proxied through a FastAPI server that holds keys in environment variables and handles the specific exchange request signing. 
 
-The frontend sends requests to the proxy. The proxy attaches credentials and forwards to the exchange. In other words, when placing order and cancelling them, there is an intermediate FastAPI server that handles user authentication.
+The flow would be: The frontend sends requests to the proxy. The proxy attaches credentials and forwards to the exchange. In other words, when placing order and cancelling them, there is an intermediate FastAPI server that handles user authentication.
+
+The exact implementation details for this will be specified later. In the meantime, think about any other approache that might be better.
 
 ---
 
