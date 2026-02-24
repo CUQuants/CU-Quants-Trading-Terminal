@@ -1,5 +1,11 @@
 export { Orderbook } from "./Orderbook";
 export { OrderbookSide } from "./OrderbookSide";
 export { OrderbookRow } from "./OrderbookRow";
-export { KrakenView } from "./KrakenView";
-export { OkxView } from "./OkxView";
+export { Dashboard } from "./Dashboard";
+export { DashboardHeader } from "./DashboardHeader";
+export { RowConfigPanel } from "./RowConfigPanel";
+export { TickerRow } from "./TickerRow";
+export { OrderPanel } from "./OrderPanel";
+export { OrderList } from "./OrderList";
+export { OrderItem } from "./OrderItem";
+export { OrderPlacementForm } from "./OrderPlacementForm";

@@ -64,5 +64,5 @@ export interface OkxBookMessage {
 
 export const EXCHANGE_SYMBOLS: Record<Exchange, string[]> = {
   kraken: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
-  okx: ["BTC-USDT", "ETH-USDT", "SOL-USDT", "XRP-USDT"],
+  okx: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
 };

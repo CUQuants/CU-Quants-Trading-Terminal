@@ -1,29 +1,42 @@
 from pydantic import BaseModel
-from typing import Literal
-from datetime import datetime
+from typing import Literal, Optional
 
 
-class Order(BaseModel):
-    symbol: str
-    exchange: str
-    quantity: int
-    price: float | None = None
+class PlaceOrderRequest(BaseModel):
+    pair: str
     side: Literal["buy", "sell"]
-    order_type: Literal["market", "limit"]
+    type: Literal["limit", "market"]
+    price: Optional[float] = None
+    size: float
 
 
 class OrderResponse(BaseModel):
     id: str
-    symbol: str
+    pair: str
     exchange: str
-    quantity: int
-    price: float | None = None
     side: Literal["buy", "sell"]
-    order_type: Literal["market", "limit"]
+    type: Literal["limit", "market"]
+    price: Optional[float] = None
+    size: float
     status: str
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: Optional[str] = None
 
-class OrdersRequest(BaseModel):
+
+class OrderEvent(BaseModel):
+    """Normalized order event pushed over WS from backend to frontend."""
+    type: Literal["order_event"] = "order_event"
     exchange: str
+    pair: str
+    orderId: str
+    status: Literal["live", "partially_filled", "filled", "canceled", "rejected"]
+    side: Literal["buy", "sell"]
+    price: float
+    size: float
+    timestamp: str
 
+
+class StatusEvent(BaseModel):
+    """Connection status event pushed over WS from backend to frontend."""
+    type: Literal["status"] = "status"
+    exchange: str
+    connectionStatus: Literal["connected", "reconnecting", "disconnected"]
