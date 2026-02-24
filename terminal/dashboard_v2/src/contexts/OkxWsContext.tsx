@@ -148,8 +148,8 @@ export function OkxWsProvider({ children }: { children: ReactNode }) {
           };
           dirtyRef.current = true;
         }
-      } catch {
-        /* malformed message — skip */
+      } catch(error){
+        console.error("Failed to parse OKX message:", error);
       }
     };
 

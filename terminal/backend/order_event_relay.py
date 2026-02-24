@@ -58,7 +58,10 @@ class OrderEventRelay:
     # ------------------------------------------------------------------
 
     async def _start_exchange_stream(self, exchange: str) -> None:
-        service = self._service_container.get_service(exchange)
+        try:
+            service = self._service_container.get_service(exchange)
+        except ValueError:
+            return
         queue: asyncio.Queue = asyncio.Queue()
         self._event_queues[exchange] = queue
 

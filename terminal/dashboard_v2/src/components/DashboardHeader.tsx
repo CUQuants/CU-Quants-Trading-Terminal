@@ -26,24 +26,30 @@ export function DashboardHeader() {
   const { orderEventsStatus } = useOrderEvents();
 
   return (
-    <header className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-white/[0.02]">
-      <h1 className="text-xl font-bold bg-gradient-to-br from-white to-gray-500 bg-clip-text text-transparent">
-        Terminal Bear
-      </h1>
+    <header className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-gradient-to-r from-white/[0.03] to-transparent">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl leading-none">📊</span>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent leading-tight">
+            CU Quants Trading Terminal
+          </h1>
+          <span className="text-[10px] uppercase tracking-widest text-white/25">
+            Live Market Data
+          </span>
+        </div>
+      </div>
 
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] uppercase tracking-widest text-white/30">
-            Orderbook
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 bg-white/[0.03] rounded-lg px-3 py-1.5 border border-white/5">
+          <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">
+            Book
           </span>
           <StatusDot status={krakenWs.connectionStatus} label="Kraken" />
           <StatusDot status={okxWs.connectionStatus} label="OKX" />
         </div>
 
-        <div className="w-px h-4 bg-white/10" />
-
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] uppercase tracking-widest text-white/30">
+        <div className="flex items-center gap-3 bg-white/[0.03] rounded-lg px-3 py-1.5 border border-white/5">
+          <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">
             Orders
           </span>
           <StatusDot status={orderEventsStatus.kraken} label="Kraken" />

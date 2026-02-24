@@ -81,6 +81,7 @@ export function KrakenWsProvider({ children }: { children: ReactNode }) {
     const socket = new WebSocket(KRAKEN_WS_URL);
     wsRef.current = socket;
 
+
     socket.onopen = () => {
       if (wsRef.current !== socket) return;
       setConnectionStatus("connected");
@@ -181,18 +182,22 @@ export function KrakenWsProvider({ children }: { children: ReactNode }) {
 
   const subscribe = useCallback(
     (pair: string) => {
-      if (pairsRef.current.has(pair)) return;
-      pairsRef.current.add(pair);
-      setSubscribedPairs([...pairsRef.current]);
+      const isNew = !pairsRef.current.has(pair);
+      if (isNew) {
+        pairsRef.current.add(pair);
+        setSubscribedPairs([...pairsRef.current]);
+      }
 
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({
-            method: "subscribe",
-            params: { channel: "book", symbol: [pair], depth: DEPTH, snapshot: true },
-          }),
-        );
+        if (isNew) {
+          ws.send(
+            JSON.stringify({
+              method: "subscribe",
+              params: { channel: "book", symbol: [pair], depth: DEPTH, snapshot: true },
+            }),
+          );
+        }
       } else {
         connectWs();
       }

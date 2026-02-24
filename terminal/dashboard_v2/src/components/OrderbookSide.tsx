@@ -22,7 +22,7 @@ export function OrderbookSide({ levels, side, title }: OrderbookSideProps) {
   const displayLevels = side === "ask" ? [...levels].reverse() : levels;
 
   return (
-    <div className="flex flex-1 flex-col min-w-[280px]">
+    <div className="flex flex-1 flex-col min-w-0">
       <div className="flex justify-between items-center px-3 py-3 border-b border-white/10">
         <span
           className={`font-semibold text-sm ${
