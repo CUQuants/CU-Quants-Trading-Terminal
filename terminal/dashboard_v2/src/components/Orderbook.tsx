@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import type { OrderbookData } from "../types/orderbook";
 import { OrderbookSide } from "./OrderbookSide";
 
+const VISIBLE_LEVELS = 5;
+
 interface OrderbookProps {
   data: OrderbookData;
 }
@@ -33,24 +35,24 @@ export function Orderbook({ data }: OrderbookProps) {
 
       {/* Body */}
       <div className="flex flex-col sm:flex-row">
-        <OrderbookSide levels={data.bids} side="bid" title="Bids" />
+        <OrderbookSide levels={data.bids.slice(0, VISIBLE_LEVELS)} side="bid" title="Bids" />
 
         {/* Spread divider */}
         <div className="flex justify-center items-center p-3 bg-white/[0.03] border-t border-b border-white/10 sm:border-t-0 sm:border-b-0 sm:border-l sm:border-r sm:flex-col sm:px-4 sm:py-5">
           {spread && (
             <div className="flex items-center gap-3 font-mono text-sm sm:flex-col sm:gap-1">
               <span className="text-green-500 font-semibold">
-                {spread.bestBid.toLocaleString()}
+                {spread.bestBid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <span className="text-white/30 sm:rotate-90">↔</span>
               <span className="text-red-500 font-semibold">
-                {spread.bestAsk.toLocaleString()}
+                {spread.bestAsk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           )}
         </div>
 
-        <OrderbookSide levels={data.asks} side="ask" title="Asks" />
+        <OrderbookSide levels={data.asks.slice(0, VISIBLE_LEVELS)} side="ask" title="Asks" />
       </div>
     </div>
   );

@@ -24,8 +24,8 @@ export function OrderbookRow({ level, side, maxQty }: OrderbookRowProps) {
         className={`z-10 font-medium ${isBid ? "text-green-500" : "text-red-500"}`}
       >
         {level.price.toLocaleString(undefined, {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
         })}
       </span>
       <span className="z-10 text-white/70">{level.qty.toFixed(6)}</span>

@@ -202,18 +202,22 @@ export function OkxWsProvider({ children }: { children: ReactNode }) {
 
   const subscribe = useCallback(
     (pair: string) => {
-      if (pairsRef.current.has(pair)) return;
-      pairsRef.current.add(pair);
-      setSubscribedPairs([...pairsRef.current]);
+      const isNew = !pairsRef.current.has(pair);
+      if (isNew) {
+        pairsRef.current.add(pair);
+        setSubscribedPairs([...pairsRef.current]);
+      }
 
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(
-          JSON.stringify({
-            op: "subscribe",
-            args: [{ channel: "books", instId: toNativePair(pair) }],
-          }),
-        );
+        if (isNew) {
+          ws.send(
+            JSON.stringify({
+              op: "subscribe",
+              args: [{ channel: "books", instId: toNativePair(pair) }],
+            }),
+          );
+        }
       } else {
         connectWs();
       }

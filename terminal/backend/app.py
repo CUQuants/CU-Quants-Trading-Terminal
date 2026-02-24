@@ -10,6 +10,13 @@ from routes.orders import router as orders_router
 
 logging.basicConfig(level=logging.INFO)
 
+"""
+To run the backend:
+
+use the command uvicorn app:app --reload --host 0.0.0.0 --port 8000
+
+"""
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

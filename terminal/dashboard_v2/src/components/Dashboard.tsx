@@ -88,13 +88,15 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
         ) : (
           <>
             {/* Table header */}
-            <div className="flex items-center gap-4 px-5 py-2 text-[10px] uppercase tracking-wider text-white/30 border-b border-white/10">
-              <span className="w-14">Exch</span>
-              <span className="w-24">Pair</span>
-              <span className="w-28 text-right">Bid</span>
-              <span className="w-28 text-right">Ask</span>
-              <span className="w-28 text-right">Spread</span>
-              <span className="ml-auto" />
+            <div className="flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-white/30 border-b border-white/10">
+              <span className="w-12">Exch</span>
+              <span className="w-20">Pair</span>
+              <div className="flex flex-1 min-w-0">
+                <span className="flex-1 text-right">Bids</span>
+                <span className="px-2 mx-1 invisible">000.00</span>
+                <span className="flex-1">Asks</span>
+              </div>
+              <span className="w-5" />
             </div>
 
             {allTickers.map(({ exchange, pair }) => (

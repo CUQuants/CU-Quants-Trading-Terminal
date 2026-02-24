@@ -41,6 +41,7 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const retriesMapRef = useRef<Record<string, number>>({});
   const reconnectTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingRef = useRef<Map<string, Set<string>>>(new Map());
+  const closingRef = useRef<Set<string>>(new Set());
 
   // Batched invalidation: every 500ms, flush accumulated pair keys
   useEffect(() => {
@@ -125,6 +126,11 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
     ws.onclose = () => {
       delete wsMapRef.current[exchange];
 
+      if (closingRef.current.has(exchange)) {
+        closingRef.current.delete(exchange);
+        return;
+      }
+
       const retries = (retriesMapRef.current[exchange] ?? 0) + 1;
       retriesMapRef.current[exchange] = retries;
 
@@ -147,8 +153,10 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
       clearTimeout(reconnectTimers.current[exchange]);
       delete reconnectTimers.current[exchange];
     }
+    closingRef.current.add(exchange);
     wsMapRef.current[exchange]?.close();
     delete wsMapRef.current[exchange];
+    retriesMapRef.current[exchange] = 0;
     setStatus((prev) => ({ ...prev, [exchange]: "idle" }));
   }
 

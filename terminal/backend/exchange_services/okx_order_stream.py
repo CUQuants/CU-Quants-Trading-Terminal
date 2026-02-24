@@ -31,7 +31,7 @@ class OkxOrderEventStream:
 
     WS_URL_US = "wss://wsus.okx.com:8443/ws/v5/private"
     WS_URL_GLOBAL = "wss://ws.okx.com:8443/ws/v5/private"
-    WS_URL_DEMO = "wss://wspap.okx.com:8443/ws/v5/private?brokerId=9999"
+    WS_URL_DEMO = "wss://wsuspap.okx.com:8443/ws/v5/private"
     PING_INTERVAL_S = 25
     MAX_RETRIES = 3
     BACKOFF_DELAYS_S = [1, 2, 4]
@@ -50,10 +50,12 @@ class OkxOrderEventStream:
         self._passphrase = passphrase
         self._simulated = simulated
         self._us = us
-        if us:
+        if simulated:
+            self._ws_url = self.WS_URL_DEMO
+        elif us:
             self._ws_url = self.WS_URL_US
         else:
-            self._ws_url = self.WS_URL_DEMO if simulated else self.WS_URL_GLOBAL
+            self._ws_url = self.WS_URL_GLOBAL
         self._normalize_pair = pair_normalizer
         self._ws = None
         self._task: asyncio.Task | None = None
