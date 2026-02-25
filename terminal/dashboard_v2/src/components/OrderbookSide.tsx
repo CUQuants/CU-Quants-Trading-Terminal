@@ -19,7 +19,7 @@ export function OrderbookSide({ levels, side, title }: OrderbookSideProps) {
     [levels]
   );
 
-  const displayLevels = side === "ask" ? [...levels].reverse() : levels;
+  const displayLevels = levels;
 
   return (
     <div className="flex flex-1 flex-col min-w-0">

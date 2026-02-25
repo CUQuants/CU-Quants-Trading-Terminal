@@ -127,8 +127,12 @@ export function OkxWsProvider({ children }: { children: ReactNode }) {
         if (msg.action === "snapshot") {
           booksRef.current[nPair] = {
             symbol: nPair,
-            bids: parseOkxLevels(d.bids).slice(0, DEPTH),
-            asks: parseOkxLevels(d.asks).slice(0, DEPTH),
+            bids: parseOkxLevels(d.bids)
+              .sort((a, b) => b.price - a.price)
+              .slice(0, DEPTH),
+            asks: parseOkxLevels(d.asks)
+              .sort((a, b) => a.price - b.price)
+              .slice(0, DEPTH),
             checksum: d.checksum,
           };
           dirtyRef.current = true;
