@@ -4,14 +4,19 @@ interface OrderbookRowProps {
   level: OrderbookLevel;
   side: "bid" | "ask";
   maxQty: number;
+  hasMyOrder?: boolean;
 }
 
-export function OrderbookRow({ level, side, maxQty }: OrderbookRowProps) {
+export function OrderbookRow({ level, side, maxQty, hasMyOrder }: OrderbookRowProps) {
   const depthPercent = maxQty > 0 ? (level.qty / maxQty) * 100 : 0;
   const isBid = side === "bid";
 
   return (
-    <div className="relative flex justify-between px-3 py-1 font-mono text-sm border-b border-white/5 hover:bg-white/5">
+    <div
+      className={`relative flex justify-between px-3 py-1 font-mono text-sm border-b border-white/5 hover:bg-white/5 ${
+        hasMyOrder ? "ring-1 ring-inset ring-yellow-400/60 bg-yellow-400/[0.06]" : ""
+      }`}
+    >
       <div
         className={`absolute top-0 bottom-0 opacity-15 transition-[width] duration-150 ease-out ${
           isBid
@@ -28,6 +33,9 @@ export function OrderbookRow({ level, side, maxQty }: OrderbookRowProps) {
           maximumFractionDigits: 2,
         })}
       </span>
+      {hasMyOrder && (
+        <span className="z-10 text-yellow-400 text-[10px] self-center mx-1">●</span>
+      )}
       <span className="z-10 text-white/70">{level.qty.toFixed(6)}</span>
     </div>
   );

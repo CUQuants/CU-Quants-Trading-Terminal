@@ -13,7 +13,6 @@ import type { BackendWsMessage } from "../types/orders";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
-const FLUSH_INTERVAL_MS = 500;
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 2000, 4000];
 
@@ -40,26 +39,7 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const wsMapRef = useRef<Record<string, WebSocket>>({});
   const retriesMapRef = useRef<Record<string, number>>({});
   const reconnectTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const pendingRef = useRef<Map<string, Set<string>>>(new Map());
   const closingRef = useRef<Set<string>>(new Set());
-
-  // Batched invalidation: every 500ms, flush accumulated pair keys
-  useEffect(() => {
-    const id = setInterval(() => {
-      const map = pendingRef.current;
-      if (map.size === 0) return;
-
-      for (const [exchange, pairs] of map.entries()) {
-        for (const pair of pairs) {
-          queryClient.invalidateQueries({
-            queryKey: ["orders", exchange, pair],
-          });
-        }
-      }
-      map.clear();
-    }, FLUSH_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [queryClient]);
 
   // Connect / disconnect based on activeExchanges
   useEffect(() => {
@@ -106,10 +86,9 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
         const data: BackendWsMessage = JSON.parse(ev.data as string);
 
         if (data.type === "order_event") {
-          const pairs =
-            pendingRef.current.get(exchange) ?? new Set<string>();
-          pairs.add(data.pair);
-          pendingRef.current.set(exchange, pairs);
+          queryClient.invalidateQueries({
+            queryKey: ["orders", exchange, data.pair],
+          });
         } else if (data.type === "status") {
           setStatus((prev) => ({
             ...prev,

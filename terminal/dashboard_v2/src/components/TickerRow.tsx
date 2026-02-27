@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { Exchange, OrderbookData, OrderbookLevel } from "../types/orderbook";
+import { useActiveOrders } from "../contexts/ActiveOrdersContext";
 
 const VISIBLE = 5;
 
@@ -23,14 +24,20 @@ function MiniLevel({
   level,
   side,
   depthPct,
+  hasMyOrder,
 }: {
   level: OrderbookLevel;
   side: "bid" | "ask";
   depthPct: number;
+  hasMyOrder?: boolean;
 }) {
   const isBid = side === "bid";
   return (
-    <div className="relative flex-1 min-w-0 px-1 py-0.5">
+    <div
+      className={`relative flex-1 min-w-0 px-1 py-0.5 ${
+        hasMyOrder ? "ring-1 ring-inset ring-yellow-400/60 rounded-sm" : ""
+      }`}
+    >
       <div
         className={`absolute inset-0 opacity-20 ${
           isBid ? "bg-green-500" : "bg-red-500"
@@ -61,6 +68,8 @@ export function TickerRow({
   onClick,
   onRemove,
 }: Props) {
+  const { hasOrderAtPrice } = useActiveOrders();
+
   const { bidLevels, askLevels, maxQty, spread } = useMemo(() => {
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0)
       return { bidLevels: [], askLevels: [], maxQty: 0, spread: null };
@@ -71,12 +80,13 @@ export function TickerRow({
     const bestBid = bids[0].price;
     const bestAsk = asks[0].price;
     const val = bestAsk - bestBid;
+    const mid = (bestBid + bestAsk) / 2;
 
     return {
       bidLevels: [...bids].reverse(),
       askLevels: asks,
       maxQty: Math.max(...allQty, 0),
-      spread: { value: val, percent: (val / bestAsk) * 100 },
+      spread: { value: val, bps: mid > 0 ? (val / mid) * 10000 : 0 },
     };
   }, [orderbook]);
 
@@ -105,6 +115,7 @@ export function TickerRow({
                   level={l}
                   side="bid"
                   depthPct={maxQty > 0 ? (l.qty / maxQty) * 100 : 0}
+                  hasMyOrder={hasOrderAtPrice(exchange, pair, l.price)}
                 />
               ))}
             </div>
@@ -112,7 +123,7 @@ export function TickerRow({
             {/* Spread pill */}
             <div className="shrink-0 px-2 mx-1 py-0.5 rounded bg-white/5 border border-white/10">
               <span className="font-mono text-[10px] text-white/40 whitespace-nowrap">
-                {spread!.value.toFixed(2)}
+                {spread!.bps.toFixed(1)} bps
               </span>
             </div>
 
@@ -124,6 +135,7 @@ export function TickerRow({
                   level={l}
                   side="ask"
                   depthPct={maxQty > 0 ? (l.qty / maxQty) * 100 : 0}
+                  hasMyOrder={hasOrderAtPrice(exchange, pair, l.price)}
                 />
               ))}
             </div>

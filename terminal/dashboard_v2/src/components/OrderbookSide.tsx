@@ -6,9 +6,10 @@ interface OrderbookSideProps {
   levels: OrderbookLevel[];
   side: "bid" | "ask";
   title: string;
+  activePrices?: Set<number>;
 }
 
-export function OrderbookSide({ levels, side, title }: OrderbookSideProps) {
+export function OrderbookSide({ levels, side, title, activePrices }: OrderbookSideProps) {
   const maxQty = useMemo(
     () => Math.max(...levels.map((l) => l.qty), 0),
     [levels]
@@ -18,8 +19,6 @@ export function OrderbookSide({ levels, side, title }: OrderbookSideProps) {
     () => levels.reduce((sum, l) => sum + l.qty, 0),
     [levels]
   );
-
-  const displayLevels = levels;
 
   return (
     <div className="flex flex-1 flex-col min-w-0">
@@ -40,12 +39,13 @@ export function OrderbookSide({ levels, side, title }: OrderbookSideProps) {
         <span>Quantity</span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {displayLevels.map((level) => (
+        {levels.map((level) => (
           <OrderbookRow
             key={level.price}
             level={level}
             side={side}
             maxQty={maxQty}
+            hasMyOrder={activePrices?.has(level.price)}
           />
         ))}
       </div>

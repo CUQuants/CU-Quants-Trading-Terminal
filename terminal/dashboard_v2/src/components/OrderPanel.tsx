@@ -34,7 +34,7 @@ export function OrderPanel({ exchange, pair, orderbook, onClose }: Props) {
         {/* Orderbook */}
         <div className="border-b border-white/10">
           {orderbook ? (
-            <Orderbook data={orderbook} />
+            <Orderbook data={orderbook} exchange={exchange} pair={pair} />
           ) : (
             <div className="py-8 text-center text-white/30 text-sm">
               Waiting for orderbook data...
