@@ -4,7 +4,6 @@ import type { Exchange } from "../types/orderbook";
 import type { RowConfig } from "../hooks/useRowConfig";
 import { useOkxWs } from "../contexts/OkxWsContext";
 import { useKrakenWs } from "../contexts/KrakenWsContext";
-import { DashboardHeader } from "./DashboardHeader";
 import { RowConfigPanel } from "./RowConfigPanel";
 import { TickerRow } from "./TickerRow";
 import { OrderPanel } from "./OrderPanel";
@@ -26,7 +25,6 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
   const krakenWs = useKrakenWs();
   const [selected, setSelected] = useState<SelectedTicker | null>(null);
 
-  // Sync WS subscriptions with row config on mount
   useEffect(() => {
     for (const pair of config.exchanges.okx) okxWs.subscribe(pair);
     for (const pair of config.exchanges.kraken) krakenWs.subscribe(pair);
@@ -68,15 +66,12 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
-      <DashboardHeader />
-
+    <>
       <RowConfigPanel
         configuredPairs={config.exchanges}
         onAdd={handleAdd}
       />
 
-      {/* Ticker table */}
       <main className="flex-1">
         {allTickers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-white/30">
@@ -87,7 +82,6 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
           </div>
         ) : (
           <>
-            {/* Table header */}
             <div className="flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-white/30 border-b border-white/10">
               <span className="w-12">Exch</span>
               <span className="w-20">Pair</span>
@@ -116,7 +110,6 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
         )}
       </main>
 
-      {/* Order panel overlay */}
       {selected && (
         <>
           <div
@@ -131,6 +124,6 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
           />
         </>
       )}
-    </div>
+    </>
   );
 }

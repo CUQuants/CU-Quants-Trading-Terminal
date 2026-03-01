@@ -4,7 +4,7 @@ import asyncio
 
 import httpx
 
-from models import PlaceOrderRequest, OrderResponse
+from models import PlaceOrderRequest, OrderResponse, TradeResponse
 
 
 class ExchangeService(ABC):
@@ -28,6 +28,10 @@ class ExchangeService(ABC):
 
     @abstractmethod
     async def cancel_order(self, order_id: str, pair: str) -> bool:
+        pass
+
+    @abstractmethod
+    async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
         pass
 
     @abstractmethod

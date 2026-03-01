@@ -9,3 +9,5 @@ export { OrderPanel } from "./OrderPanel";
 export { OrderList } from "./OrderList";
 export { OrderItem } from "./OrderItem";
 export { OrderPlacementForm } from "./OrderPlacementForm";
+export { TradesView } from "./TradesView";
+export { TradesTable } from "./TradesTable";

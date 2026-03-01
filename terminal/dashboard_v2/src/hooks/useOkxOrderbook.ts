@@ -6,7 +6,7 @@ import type {
   OkxRawLevel,
 } from "../types/orderbook";
 
-const OKX_WS_URL = "wss://wsus.okx.com:8443/ws/v5/public";
+const OKX_WS_URL = "wss://wsuspap.okx.com:8443/ws/v5/public";
 
 interface UseOkxOrderbookOptions {
   symbol: string;

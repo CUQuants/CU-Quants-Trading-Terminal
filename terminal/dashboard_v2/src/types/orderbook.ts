@@ -37,7 +37,7 @@ export interface KrakenSubscribeMessage {
 
 export type KrakenMessage =
   | KrakenBookMessage
-  | { channel: string; [key: string]: unknown };
+  | { channel: string;[key: string]: unknown };
 
 // --- OKX WebSocket types ---
 

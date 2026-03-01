@@ -12,7 +12,7 @@ load_dotenv()
 
 from exchange_services.exchange import ExchangeService
 from exchange_services.okx_order_stream import OkxOrderEventStream
-from models import PlaceOrderRequest, OrderResponse
+from models import PlaceOrderRequest, OrderResponse, TradeResponse
 
 
 class OkxService(ExchangeService):
@@ -138,6 +138,36 @@ class OkxService(ExchangeService):
                 created_at=item.get("cTime"),
             ))
         return orders
+
+    async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
+        base_path = "/api/v5/trade/fills-history"
+        params: dict = {"instType": "SPOT", "limit": str(limit)}
+        if pair:
+            params["instId"] = self._to_native_pair(pair)
+
+        query = self._build_query_string(params)
+        request_path = base_path + query
+        headers = self._get_headers("GET", request_path)
+
+        data = await self._request("GET", request_path, headers=headers)
+
+        trades: List[TradeResponse] = []
+        for item in data.get("data", []):
+            exec_type = item.get("execType", "")
+            trades.append(TradeResponse(
+                id=item["tradeId"],
+                order_id=item["ordId"],
+                pair=self._from_native_pair(item["instId"]),
+                exchange="okx",
+                side=item["side"],
+                price=float(item["fillPx"]),
+                size=float(item["fillSz"]),
+                fee=abs(float(item.get("fee") or 0)),
+                fee_currency=item.get("feeCcy", ""),
+                role="maker" if exec_type == "M" else "taker",
+                timestamp=item.get("fillTime", item.get("ts", "")),
+            ))
+        return trades
 
     async def cancel_order(self, order_id: str, pair: str) -> bool:
         request_path = "/api/v5/trade/cancel-order"

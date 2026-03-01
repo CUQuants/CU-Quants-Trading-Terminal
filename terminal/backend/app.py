@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from exchange_services.service_container import ServiceContainer
 from order_event_relay import OrderEventRelay
 from routes.orders import router as orders_router
+from routes.trades import router as trades_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(orders_router)
+app.include_router(trades_router)
 
 
 @app.get("/")

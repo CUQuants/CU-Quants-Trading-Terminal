@@ -22,6 +22,20 @@ class OrderResponse(BaseModel):
     created_at: Optional[str] = None
 
 
+class TradeResponse(BaseModel):
+    id: str
+    order_id: str
+    pair: str
+    exchange: str
+    side: Literal["buy", "sell"]
+    price: float
+    size: float
+    fee: float
+    fee_currency: str
+    role: Literal["maker", "taker"]
+    timestamp: str
+
+
 class OrderEvent(BaseModel):
     """Normalized order event pushed over WS from backend to frontend."""
     type: Literal["order_event"] = "order_event"

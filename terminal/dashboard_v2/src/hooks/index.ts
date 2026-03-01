@@ -4,3 +4,4 @@ export { useRowConfig } from "./useRowConfig";
 export { useOrders } from "./useOrders";
 export { usePlaceOrder } from "./usePlaceOrder";
 export { useCancelOrder } from "./useCancelOrder";
+export { useTrades } from "./useTrades";

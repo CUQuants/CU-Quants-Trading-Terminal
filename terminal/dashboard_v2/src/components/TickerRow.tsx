@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Exchange, OrderbookData, OrderbookLevel } from "../types/orderbook";
 import { useActiveOrders } from "../contexts/ActiveOrdersContext";
+import { formatNum } from "../utils/format";
 
 const VISIBLE = 5;
 
@@ -11,13 +12,6 @@ interface Props {
   isSelected: boolean;
   onClick: () => void;
   onRemove: () => void;
-}
-
-function fmt(n: number) {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 }
 
 function MiniLevel({
@@ -54,7 +48,7 @@ function MiniLevel({
           isBid ? "text-green-400 text-right" : "text-red-400 text-left"
         }`}
       >
-        {fmt(level.price)}
+        {formatNum(level.price)}
       </span>
     </div>
   );

@@ -95,6 +95,7 @@ class OrderEventRelay:
             while True:
                 event = await queue.get()
                 message = json.dumps(event)
+                print(message)
 
                 clients = self._clients.get(exchange, set()).copy()
                 stale: list[WebSocket] = []
