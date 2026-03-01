@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 from typing import Dict, Set
 
 from fastapi import WebSocket
@@ -9,6 +10,15 @@ from starlette.websockets import WebSocketState
 from exchange_services.service_container import ServiceContainer
 
 logger = logging.getLogger(__name__)
+
+order_logger = logging.getLogger("order_events")
+order_logger.setLevel(logging.INFO)
+order_logger.propagate = False
+_handler = RotatingFileHandler(
+    "logs/order_events.log", maxBytes=5 * 1024 * 1024, backupCount=3
+)
+_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+order_logger.addHandler(_handler)
 
 
 class OrderEventRelay:
@@ -95,7 +105,7 @@ class OrderEventRelay:
             while True:
                 event = await queue.get()
                 message = json.dumps(event)
-                print(message)
+                order_logger.info("[%s] %s", exchange, message)
 
                 clients = self._clients.get(exchange, set()).copy()
                 stale: list[WebSocket] = []
