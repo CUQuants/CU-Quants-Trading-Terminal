@@ -7,3 +7,5 @@ export { useCancelOrder } from "./useCancelOrder";
 export { useTrades } from "./useTrades";
 export { useAvailableCash } from "./useAvailableCash";
 export { useAvailablePositions } from "./useAvailablePositions";
+export { useAccountBalances } from "./useAccountBalances";
+export { useAccountPositions } from "./useAccountPositions";

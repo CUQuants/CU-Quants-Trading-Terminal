@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import asyncio
 
 import httpx
@@ -10,6 +10,8 @@ from models import (
     TradeResponse,
     AvailableCashResponse,
     AvailablePositionResponse,
+    AllBalancesResponse,
+    AllPositionsResponse,
 )
 
 
@@ -25,7 +27,10 @@ class ExchangeService(ABC):
             return response.json()
 
     @abstractmethod
-    async def place_order(self, request: PlaceOrderRequest) -> OrderResponse:
+    async def place_order(
+        self, request: PlaceOrderRequest
+    ) -> Tuple[Optional[OrderResponse], Optional[str]]:
+        """Returns (order, error). On success: order set, error None. On failure: order None, error message."""
         pass
 
     @abstractmethod
@@ -48,6 +53,16 @@ class ExchangeService(ABC):
     @abstractmethod
     async def get_available_positions(self, pair: str) -> AvailablePositionResponse:
         """Return available balance for the base currency of the pair (e.g. BTC for sells)."""
+        pass
+
+    @abstractmethod
+    async def get_all_balances(self) -> AllBalancesResponse:
+        """Return full account balance (all currencies) for this exchange."""
+        pass
+
+    @abstractmethod
+    async def get_all_positions(self) -> AllPositionsResponse:
+        """Return all positions (non-zero, non-cash holdings) for this exchange."""
         pass
 
     @abstractmethod

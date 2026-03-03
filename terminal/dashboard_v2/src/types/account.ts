@@ -14,3 +14,27 @@ export interface AvailablePosition {
   frozen: number;
   total: number;
 }
+
+export interface BalanceEntry {
+  currency: string;
+  available: number;
+  frozen: number;
+  total: number;
+}
+
+export interface AllBalances {
+  exchange: string;
+  currencies: BalanceEntry[];
+}
+
+export interface PositionEntry {
+  currency: string;
+  available: number;
+  frozen: number;
+  total: number;
+}
+
+export interface AllPositions {
+  exchange: string;
+  positions: PositionEntry[];
+}

@@ -2,7 +2,7 @@ import { useOkxWs } from "../contexts/OkxWsContext";
 import { useKrakenWs } from "../contexts/KrakenWsContext";
 import { useOrderEvents } from "../contexts/OrderEventsContext";
 
-export type View = "dashboard" | "trades";
+export type View = "dashboard" | "trades" | "account";
 
 const STATUS_COLORS: Record<string, string> = {
   connected: "bg-green-500 shadow-[0_0_6px_theme(colors.green.500)]",
@@ -80,6 +80,11 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
             label="Trades"
             active={currentView === "trades"}
             onClick={() => onViewChange("trades")}
+          />
+          <TabButton
+            label="Account"
+            active={currentView === "account"}
+            onClick={() => onViewChange("account")}
           />
         </div>
       </div>

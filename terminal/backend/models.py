@@ -73,3 +73,33 @@ class AvailablePositionResponse(BaseModel):
     available: float
     frozen: float
     total: float
+
+
+# --- Account page: all balances and positions ---
+
+class BalanceEntry(BaseModel):
+    """Single currency balance."""
+    currency: str
+    available: float
+    frozen: float
+    total: float
+
+
+class AllBalancesResponse(BaseModel):
+    """Full account balance for an exchange."""
+    exchange: str
+    currencies: List[BalanceEntry]
+
+
+class PositionEntry(BaseModel):
+    """Single position (non-cash, non-zero holding)."""
+    currency: str
+    available: float
+    frozen: float
+    total: float
+
+
+class AllPositionsResponse(BaseModel):
+    """All positions for an exchange (non-zero, non-cash)."""
+    exchange: str
+    positions: List[PositionEntry]

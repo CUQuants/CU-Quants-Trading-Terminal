@@ -2,6 +2,16 @@ import { useState } from "react";
 import type { Exchange } from "../types/orderbook";
 import { EXCHANGE_SYMBOLS } from "../types/orderbook";
 
+const PAIR_PATTERN = /^[A-Z0-9]+\/[A-Z0-9]+$/i;
+
+function normalizePair(input: string): string {
+  return input.trim().toUpperCase();
+}
+
+function isValidPair(input: string): boolean {
+  return PAIR_PATTERN.test(normalizePair(input));
+}
+
 interface Props {
   configuredPairs: Record<Exchange, string[]>;
   onAdd: (exchange: Exchange, pair: string) => void;
@@ -9,41 +19,53 @@ interface Props {
 
 export function RowConfigPanel({ configuredPairs, onAdd }: Props) {
   const [exchange, setExchange] = useState<Exchange>("okx");
-  const [pair, setPair] = useState(EXCHANGE_SYMBOLS[exchange][0]);
+  const [pairInput, setPairInput] = useState("");
 
-  const handleExchangeChange = (ex: Exchange) => {
-    setExchange(ex);
-    setPair(EXCHANGE_SYMBOLS[ex][0]);
+  const pair = normalizePair(pairInput);
+  const isValid = pair.length > 0 && isValidPair(pairInput);
+  const alreadyAdded = isValid && configuredPairs[exchange]?.includes(pair);
+
+  const handleAdd = () => {
+    if (!isValid || alreadyAdded) return;
+    onAdd(exchange, pair);
+    setPairInput("");
   };
 
-  const alreadyAdded = configuredPairs[exchange]?.includes(pair);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleAdd();
+  };
 
   return (
     <div className="flex items-center gap-3 px-6 py-3 bg-white/[0.02] border-b border-white/10">
       <select
         value={exchange}
-        onChange={(e) => handleExchangeChange(e.target.value as Exchange)}
+        onChange={(e) => setExchange(e.target.value as Exchange)}
         className="px-3 py-1.5 text-sm rounded-lg border border-white/20 bg-white/5 text-white cursor-pointer outline-none hover:border-white/30 focus:border-blue-500"
       >
         <option value="kraken">Kraken</option>
         <option value="okx">OKX</option>
       </select>
 
-      <select
-        value={pair}
-        onChange={(e) => setPair(e.target.value)}
-        className="px-3 py-1.5 text-sm rounded-lg border border-white/20 bg-white/5 text-white cursor-pointer outline-none hover:border-white/30 focus:border-blue-500"
-      >
-        {EXCHANGE_SYMBOLS[exchange].map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <div className="relative flex-1 max-w-[200px]">
+        <input
+          type="text"
+          value={pairInput}
+          onChange={(e) => setPairInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="e.g. BTC/USD or DOGE/USD"
+          list="pair-suggestions"
+          className="w-full px-3 py-1.5 text-sm rounded-lg border border-white/20 bg-white/5 text-white placeholder-white/30 outline-none hover:border-white/30 focus:border-blue-500"
+        />
+        <datalist id="pair-suggestions">
+          {EXCHANGE_SYMBOLS[exchange].map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </div>
 
       <button
-        onClick={() => onAdd(exchange, pair)}
-        disabled={alreadyAdded}
+        onClick={handleAdd}
+        disabled={!isValid || alreadyAdded}
         className="px-4 py-1.5 text-sm font-medium rounded-lg transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-500"
       >
         {alreadyAdded ? "Added" : "Add Pair"}

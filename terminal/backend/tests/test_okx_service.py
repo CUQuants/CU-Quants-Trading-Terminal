@@ -148,6 +148,56 @@ async def test_get_available_cash_parses_balance():
 
 
 @pytest.mark.asyncio
+async def test_get_all_balances_returns_all_currencies():
+    """get_all_balances returns all currencies from full balance response."""
+    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    balance_response = {
+        "code": "0",
+        "data": [{
+            "details": [
+                {"ccy": "USDT", "availBal": "1000", "frozenBal": "0", "eq": "1000"},
+                {"ccy": "BTC", "availBal": "0.5", "frozenBal": "0.1", "eq": "0.6"},
+            ],
+        }],
+    }
+
+    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
+        result = await okx.get_all_balances()
+
+    assert result.exchange == "okx"
+    assert len(result.currencies) == 2
+    usd = next(c for c in result.currencies if c.currency == "USD")
+    assert usd.available == 1000
+    btc = next(c for c in result.currencies if c.currency == "BTC")
+    assert btc.available == 0.5
+    assert btc.frozen == 0.1
+
+
+@pytest.mark.asyncio
+async def test_get_all_positions_excludes_cash_and_zero():
+    """get_all_positions returns only non-zero, non-stablecoin holdings."""
+    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    balance_response = {
+        "code": "0",
+        "data": [{
+            "details": [
+                {"ccy": "USDT", "availBal": "1000", "frozenBal": "0", "eq": "1000"},
+                {"ccy": "BTC", "availBal": "0.5", "frozenBal": "0", "eq": "0.5"},
+                {"ccy": "ETH", "availBal": "0", "frozenBal": "0", "eq": "0"},
+            ],
+        }],
+    }
+
+    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
+        result = await okx.get_all_positions()
+
+    assert result.exchange == "okx"
+    assert len(result.positions) == 1
+    assert result.positions[0].currency == "BTC"
+    assert result.positions[0].available == 0.5
+
+
+@pytest.mark.asyncio
 async def test_get_available_positions_parses_balance():
     """get_available_positions returns base currency balance."""
     okx = OkxService(base_url="https://us.okx.com", simulated=True)
@@ -186,6 +236,33 @@ async def test_get_trades_empty_response():
 
 
 # ---------------------------------------------------------------------------
+# place_order error handling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_place_order_returns_error_on_okx_failure():
+    """place_order returns (None, error_msg) when OKX rejects the order."""
+    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    okx_response = {
+        "code": "1",
+        "msg": "All operations failed",
+        "data": [{
+            "sCode": "51008",
+            "sMsg": "Order failed. Your available SOL balance is insufficient.",
+        }],
+    }
+
+    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=okx_response):
+        order, err = await okx.place_order(
+            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
+        )
+
+    assert order is None
+    assert err == "Order failed. Your available SOL balance is insufficient."
+
+
+# ---------------------------------------------------------------------------
 # Order lifecycle (integration - requires API keys)
 # ---------------------------------------------------------------------------
 
@@ -204,8 +281,9 @@ async def test_place_view_cancel_order(okx: OkxService):
         price=1000.00,
         size=1,
     )
-    placed = await okx.place_order(order)
-    assert placed.id is not None
+    placed, err = await okx.place_order(order)
+    assert err is None, f"place_order failed: {err}"
+    assert placed is not None
     order_id = placed.id
 
     pending = await okx.get_orders(pair="BTC/USD")

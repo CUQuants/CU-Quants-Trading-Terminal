@@ -24,16 +24,29 @@ export function usePlaceOrder(exchange: Exchange) {
     },
 
     onError: (error, variables) => {
-      if (error instanceof ApiError && error.status >= 500) {
-        queryClient.invalidateQueries({
-          queryKey: ["orders", exchange, variables.pair],
-        });
-        toast.error("Order may have been placed — please check your orders");
-      } else {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to place order",
-        );
+      let message = "Failed to place order";
+      if (error instanceof ApiError) {
+        if (error.status >= 500) {
+          queryClient.invalidateQueries({
+            queryKey: ["orders", exchange, variables.pair],
+          });
+          toast.error("Order may have been placed — please check your orders");
+          return;
+        }
+        if (error.status === 400) {
+          try {
+            const parsed = JSON.parse(error.message) as { detail?: string };
+            if (parsed.detail) message = parsed.detail;
+          } catch {
+            message = error.message;
+          }
+        } else {
+          message = error.message;
+        }
+      } else if (error instanceof Error) {
+        message = error.message;
       }
+      toast.error(message);
     },
   });
 }

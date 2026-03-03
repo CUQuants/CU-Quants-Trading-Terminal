@@ -1,5 +1,10 @@
 import type { Exchange } from "../types/orderbook";
-import type { AvailableCash, AvailablePosition } from "../types/account";
+import type {
+  AvailableCash,
+  AvailablePosition,
+  AllBalances,
+  AllPositions,
+} from "../types/account";
 import { ApiError } from "./orders";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -29,4 +34,12 @@ export function fetchAvailablePositions(
   return request(
     `${API_BASE}/account/positions/${exchange}?pair=${encodeURIComponent(pair)}`,
   );
+}
+
+export function fetchAllBalances(exchange: Exchange): Promise<AllBalances> {
+  return request(`${API_BASE}/account/balances/${exchange}`);
+}
+
+export function fetchAllPositions(exchange: Exchange): Promise<AllPositions> {
+  return request(`${API_BASE}/account/positions/${exchange}`);
 }

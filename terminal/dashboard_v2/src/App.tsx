@@ -9,6 +9,7 @@ import { ActiveOrdersProvider } from "./contexts/ActiveOrdersContext";
 import { DashboardHeader, type View } from "./components/DashboardHeader";
 import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
+import { AccountView } from "./components/AccountView";
 
 function App() {
   const { config, addPair, removePair } = useRowConfig();
@@ -42,14 +43,18 @@ function App() {
                 currentView={currentView}
                 onViewChange={setCurrentView}
               />
-              {currentView === "dashboard" ? (
+              {currentView === "dashboard" && (
                 <Dashboard
                   config={config}
                   onAddPair={addPair}
                   onRemovePair={removePair}
                 />
-              ) : (
+              )}
+              {currentView === "trades" && (
                 <TradesView activeExchanges={activeExchanges} />
+              )}
+              {currentView === "account" && (
+                <AccountView activeExchanges={activeExchanges} />
               )}
             </div>
           </ActiveOrdersProvider>

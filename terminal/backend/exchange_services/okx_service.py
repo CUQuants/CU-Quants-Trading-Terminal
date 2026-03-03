@@ -18,6 +18,10 @@ from models import (
     TradeResponse,
     AvailableCashResponse,
     AvailablePositionResponse,
+    AllBalancesResponse,
+    AllPositionsResponse,
+    BalanceEntry,
+    PositionEntry,
 )
 
 
@@ -97,7 +101,9 @@ class OkxService(ExchangeService):
     # REST: orders
     # ------------------------------------------------------------------
 
-    async def place_order(self, request: PlaceOrderRequest) -> OrderResponse:
+    async def place_order(
+        self, request: PlaceOrderRequest
+    ) -> tuple[Optional[OrderResponse], Optional[str]]:
         request_path = "/api/v5/trade/order"
         body_dict = {
             "instId": self._to_native_pair(request.pair),
@@ -112,12 +118,22 @@ class OkxService(ExchangeService):
         body = json.dumps(body_dict)
         headers = self._get_headers("POST", request_path, body)
 
-        data = await self._request("POST", request_path, body=body, headers=headers)
+        try:
+            data = await self._request("POST", request_path, body=body, headers=headers)
+        except Exception as e:
+            return (None, str(e))
+
         if data.get("code") != "0":
-            raise Exception(f"OKX place_order failed: {data}")
+            err_msg = data.get("msg", "Order failed")
+            details = data.get("data", [])
+            if details and isinstance(details[0], dict):
+                s_msg = details[0].get("sMsg", "")
+                if s_msg:
+                    err_msg = s_msg
+            return (None, err_msg)
 
         order_id = data["data"][0]["ordId"]
-        return OrderResponse(
+        order = OrderResponse(
             id=order_id,
             pair=request.pair,
             exchange="okx",
@@ -127,6 +143,7 @@ class OkxService(ExchangeService):
             size=request.size,
             status="live",
         )
+        return (order, None)
 
     async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
         base_path = "/api/v5/trade/orders-pending"
@@ -232,7 +249,6 @@ class OkxService(ExchangeService):
         frozen = float(d.get("frozenBal", 0) or 0)
         total = float(d.get("eq", 0) or 0) or (avail + frozen)
         display_ccy = "USD" if ccy == "USDT" else ccy
-        print(display_ccy)
         return AvailableCashResponse(
             exchange="okx",
             currency=display_ccy,
@@ -257,6 +273,40 @@ class OkxService(ExchangeService):
             frozen=frozen,
             total=total,
         )
+
+    # Stablecoins excluded from positions (Option C: non-zero + non-cash)
+    _CASH_CCYS = frozenset({"USDT", "USDC", "DAI", "BUSD", "TUSD", "USDP", "FDUSD"})
+
+    async def get_all_balances(self) -> AllBalancesResponse:
+        """Full account balance (all currencies)."""
+        balances = await self._fetch_all_balances()
+        currencies = []
+        for ccy, d in balances.items():
+            avail = float(d.get("availBal", 0) or 0)
+            frozen = float(d.get("frozenBal", 0) or 0)
+            total = float(d.get("eq", 0) or 0) or (avail + frozen)
+            display_ccy = "USD" if ccy == "USDT" else ccy
+            currencies.append(
+                BalanceEntry(currency=display_ccy, available=avail, frozen=frozen, total=total)
+            )
+        return AllBalancesResponse(exchange="okx", currencies=currencies)
+
+    async def get_all_positions(self) -> AllPositionsResponse:
+        """All positions: non-zero, non-cash holdings."""
+        balances = await self._fetch_all_balances()
+        positions = []
+        for ccy, d in balances.items():
+            if ccy in self._CASH_CCYS:
+                continue
+            avail = float(d.get("availBal", 0) or 0)
+            frozen = float(d.get("frozenBal", 0) or 0)
+            total = float(d.get("eq", 0) or 0) or (avail + frozen)
+            if total <= 0:
+                continue
+            positions.append(
+                PositionEntry(currency=ccy, available=avail, frozen=frozen, total=total)
+            )
+        return AllPositionsResponse(exchange="okx", positions=positions)
 
     # ------------------------------------------------------------------
     # WS: order event stream

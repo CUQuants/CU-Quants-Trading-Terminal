@@ -44,7 +44,10 @@ async def get_orders(request: Request, exchange: str, pair: str = Query(...)):
 async def place_order(request: Request, exchange: str, body: PlaceOrderRequest):
     """Place an order on the given exchange."""
     service = request.app.state.service_container.get_service(exchange)
-    return await service.place_order(body)
+    order, error = await service.place_order(body)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    return order
 
 
 @router.delete("/{exchange}/{order_id}")
