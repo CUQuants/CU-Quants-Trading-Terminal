@@ -122,6 +122,59 @@ async def test_get_trades_pair_filter_and_limit():
 
 
 @pytest.mark.asyncio
+async def test_get_available_cash_parses_balance():
+    """get_available_cash returns quote currency (USDT->USD) balance."""
+    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    balance_response = {
+        "code": "0",
+        "data": [{
+            "details": [{
+                "ccy": "USDT",
+                "availBal": "1234.56",
+                "frozenBal": "100.00",
+                "eq": "1334.56",
+            }],
+        }],
+    }
+
+    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
+        result = await okx.get_available_cash("BTC/USD")
+
+    assert result.exchange == "okx"
+    assert result.currency == "USD"
+    assert result.available == 1234.56
+    assert result.frozen == 100.0
+    assert result.total == 1334.56
+
+
+@pytest.mark.asyncio
+async def test_get_available_positions_parses_balance():
+    """get_available_positions returns base currency balance."""
+    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    balance_response = {
+        "code": "0",
+        "data": [{
+            "details": [{
+                "ccy": "BTC",
+                "availBal": "0.5",
+                "frozenBal": "0.1",
+                "eq": "0.6",
+            }],
+        }],
+    }
+
+    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
+        result = await okx.get_available_positions("BTC/USD")
+
+    assert result.exchange == "okx"
+    assert result.pair == "BTC/USD"
+    assert result.base_currency == "BTC"
+    assert result.available == 0.5
+    assert result.frozen == 0.1
+    assert result.total == 0.6
+
+
+@pytest.mark.asyncio
 async def test_get_trades_empty_response():
     """get_trades handles empty data array without error."""
     okx = OkxService(base_url="https://us.okx.com", simulated=True)

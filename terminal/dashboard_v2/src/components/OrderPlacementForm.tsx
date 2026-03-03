@@ -1,6 +1,9 @@
 import { useState } from "react";
 import type { Exchange } from "../types/orderbook";
 import { usePlaceOrder } from "../hooks/usePlaceOrder";
+import { useAvailableCash } from "../hooks/useAvailableCash";
+import { useAvailablePositions } from "../hooks/useAvailablePositions";
+import { formatNum } from "../utils/format";
 
 interface Props {
   exchange: Exchange;
@@ -15,6 +18,8 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const mutation = usePlaceOrder(exchange);
+  const cashQuery = useAvailableCash(exchange, pair);
+  const positionsQuery = useAvailablePositions(exchange, pair);
 
   function validate(): boolean {
     const e: Record<string, string> = {};
@@ -50,8 +55,37 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
 
   const isBuy = side === "buy";
 
+  const availableDisplay = isBuy ? (
+    cashQuery.isLoading ? (
+      <span className="text-white/40 text-sm">Loading cash…</span>
+    ) : cashQuery.isError ? (
+      <span className="text-red-400 text-sm">Failed to load cash</span>
+    ) : cashQuery.data ? (
+      <span className="text-white/70 text-sm">
+        Available: {formatNum(cashQuery.data.available, 2)}{" "}
+        {cashQuery.data.currency}
+      </span>
+    ) : null
+  ) : positionsQuery.isLoading ? (
+    <span className="text-white/40 text-sm">Loading position…</span>
+  ) : positionsQuery.isError ? (
+    <span className="text-red-400 text-sm">Failed to load position</span>
+  ) : positionsQuery.data ? (
+    <span className="text-white/70 text-sm">
+      Available: {formatNum(positionsQuery.data.available, 6)}{" "}
+      {positionsQuery.data.base_currency}
+    </span>
+  ) : null;
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 p-4">
+      {/* Available balance */}
+      {availableDisplay && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
+          {availableDisplay}
+        </div>
+      )}
+
       {/* Side toggle */}
       <div className="flex rounded-lg overflow-hidden border border-white/10">
         <button

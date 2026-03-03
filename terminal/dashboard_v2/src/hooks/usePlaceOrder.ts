@@ -14,6 +14,12 @@ export function usePlaceOrder(exchange: Exchange) {
       queryClient.invalidateQueries({
         queryKey: ["orders", exchange, variables.pair],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["account", "cash", exchange, variables.pair],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["account", "positions", exchange, variables.pair],
+      });
       toast.success("Order placed");
     },
 

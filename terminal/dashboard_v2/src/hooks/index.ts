@@ -5,3 +5,5 @@ export { useOrders } from "./useOrders";
 export { usePlaceOrder } from "./usePlaceOrder";
 export { useCancelOrder } from "./useCancelOrder";
 export { useTrades } from "./useTrades";
+export { useAvailableCash } from "./useAvailableCash";
+export { useAvailablePositions } from "./useAvailablePositions";

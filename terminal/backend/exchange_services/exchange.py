@@ -4,7 +4,13 @@ import asyncio
 
 import httpx
 
-from models import PlaceOrderRequest, OrderResponse, TradeResponse
+from models import (
+    PlaceOrderRequest,
+    OrderResponse,
+    TradeResponse,
+    AvailableCashResponse,
+    AvailablePositionResponse,
+)
 
 
 class ExchangeService(ABC):
@@ -32,6 +38,16 @@ class ExchangeService(ABC):
 
     @abstractmethod
     async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
+        pass
+
+    @abstractmethod
+    async def get_available_cash(self, pair: str) -> AvailableCashResponse:
+        """Return available balance for the quote currency of the pair (e.g. USDT for buys)."""
+        pass
+
+    @abstractmethod
+    async def get_available_positions(self, pair: str) -> AvailablePositionResponse:
+        """Return available balance for the base currency of the pair (e.g. BTC for sells)."""
         pass
 
     @abstractmethod

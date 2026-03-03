@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 
 class PlaceOrderRequest(BaseModel):
@@ -54,3 +54,22 @@ class StatusEvent(BaseModel):
     type: Literal["status"] = "status"
     exchange: str
     connectionStatus: Literal["connected", "reconnecting", "disconnected"]
+
+
+class AvailableCashResponse(BaseModel):
+    """Available balance for the quote currency (e.g. USDT) of a pair."""
+    exchange: str
+    currency: str
+    available: float
+    frozen: float
+    total: float
+
+
+class AvailablePositionResponse(BaseModel):
+    """Available balance for the base currency (e.g. BTC) of a pair."""
+    exchange: str
+    pair: str
+    base_currency: str
+    available: float
+    frozen: float
+    total: float

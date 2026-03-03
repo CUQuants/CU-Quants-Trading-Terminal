@@ -5,14 +5,20 @@ import base64
 import json
 import asyncio
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from exchange_services.exchange import ExchangeService
 from exchange_services.okx_order_stream import OkxOrderEventStream
-from models import PlaceOrderRequest, OrderResponse, TradeResponse
+from models import (
+    PlaceOrderRequest,
+    OrderResponse,
+    TradeResponse,
+    AvailableCashResponse,
+    AvailablePositionResponse,
+)
 
 
 class OkxService(ExchangeService):
@@ -76,6 +82,16 @@ class OkxService(ExchangeService):
         if quote == "USDT":
             quote = "USD"
         return f"{base}/{quote}"
+
+    def _get_quote_ccy(self, pair: str) -> str:
+        """BTC/USD -> USDT (OKX uses USDT for USD pairs)."""
+        _, quote = pair.split("/")
+        return "USDT" if quote == "USD" else quote
+
+    def _get_base_ccy(self, pair: str) -> str:
+        """BTC/USD -> BTC."""
+        base, _ = pair.split("/")
+        return base
 
     # ------------------------------------------------------------------
     # REST: orders
@@ -180,6 +196,67 @@ class OkxService(ExchangeService):
 
         result = await self._request("POST", request_path, body=body, headers=headers)
         return result.get("code") == "0"
+
+    # ------------------------------------------------------------------
+    # REST: account balance (cash and positions)
+    # ------------------------------------------------------------------
+
+    async def _fetch_all_balances(self) -> Dict[str, dict]:
+        """Fetch full account balance from OKX (no ccy filter), filter in memory."""
+        request_path = "/api/v5/account/balance"
+        headers = self._get_headers("GET", request_path)
+        data = await self._request("GET", request_path, headers=headers)
+
+        if data.get("code") != "0":
+            raise Exception(f"OKX balance failed: {data}")
+
+        result: Dict[str, dict] = {}
+        for d in data.get("data", [{}])[0].get("details", []):
+            ccy = d.get("ccy", "")
+            result[ccy] = d
+        return result
+
+    def _balance_for_ccy(self, balances: Dict[str, dict], ccy: str) -> dict:
+        """Extract balance for a currency; return zeros if missing."""
+        d = balances.get(ccy)
+        if not d:
+            return {"availBal": "0", "frozenBal": "0", "eq": "0"}
+        return d
+
+    async def get_available_cash(self, pair: str) -> AvailableCashResponse:
+        """Available balance for quote currency (USDT for USD pairs)."""
+        balances = await self._fetch_all_balances()
+        ccy = self._get_quote_ccy(pair)
+        d = self._balance_for_ccy(balances, ccy)
+        avail = float(d.get("availBal", 0) or 0)
+        frozen = float(d.get("frozenBal", 0) or 0)
+        total = float(d.get("eq", 0) or 0) or (avail + frozen)
+        display_ccy = "USD" if ccy == "USDT" else ccy
+        print(display_ccy)
+        return AvailableCashResponse(
+            exchange="okx",
+            currency=display_ccy,
+            available=avail,
+            frozen=frozen,
+            total=total,
+        )
+
+    async def get_available_positions(self, pair: str) -> AvailablePositionResponse:
+        """Available balance for base currency (e.g. BTC for BTC/USD)."""
+        balances = await self._fetch_all_balances()
+        ccy = self._get_base_ccy(pair)
+        d = self._balance_for_ccy(balances, ccy)
+        avail = float(d.get("availBal", 0) or 0)
+        frozen = float(d.get("frozenBal", 0) or 0)
+        total = float(d.get("eq", 0) or 0) or (avail + frozen)
+        return AvailablePositionResponse(
+            exchange="okx",
+            pair=pair,
+            base_currency=ccy,
+            available=avail,
+            frozen=frozen,
+            total=total,
+        )
 
     # ------------------------------------------------------------------
     # WS: order event stream
