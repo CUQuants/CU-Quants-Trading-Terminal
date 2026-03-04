@@ -83,6 +83,17 @@ docker --version
 docker compose version
 ```
 
+### Running the Terminal
+
+You must be in the `terminal` directory when running Docker Compose, since it looks for `docker-compose.yml` in the current folder:
+
+```bash
+cd terminal
+docker compose up --build
+```
+
+If you’re already in the project root, use `cd terminal` first. Once running, the frontend is at http://localhost:3000 and the backend at http://localhost:8000.
+
 ### Common Commands
 
 | Command | Description |
