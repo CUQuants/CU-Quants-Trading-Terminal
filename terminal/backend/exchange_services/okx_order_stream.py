@@ -4,12 +4,11 @@ import hashlib
 import base64
 import json
 import time
-import logging
 from typing import Callable
 
 import websockets
 
-logger = logging.getLogger(__name__)
+from exchange_services.order_event_stream_base import BaseOrderEventStream
 
 OKX_STATE_MAP = {
     "live": "live",
@@ -20,7 +19,7 @@ OKX_STATE_MAP = {
 }
 
 
-class OkxOrderEventStream:
+class OkxOrderEventStream(BaseOrderEventStream):
     """Authenticated WebSocket connection to OKX's private API
     for streaming real-time order events.
 
@@ -33,8 +32,6 @@ class OkxOrderEventStream:
     WS_URL_GLOBAL = "wss://ws.okx.com:8443/ws/v5/private"
     WS_URL_DEMO = "wss://wsuspap.okx.com:8443/ws/v5/private"
     PING_INTERVAL_S = 25
-    MAX_RETRIES = 3
-    BACKOFF_DELAYS_S = [1, 2, 4]
 
     def __init__(
         self,
@@ -45,6 +42,7 @@ class OkxOrderEventStream:
         us: bool = True,
         pair_normalizer: Callable[[str], str] = lambda x: x,
     ):
+        super().__init__(exchange_name="okx")
         self._api_key = api_key
         self._api_secret = api_secret
         self._passphrase = passphrase
@@ -57,29 +55,6 @@ class OkxOrderEventStream:
         else:
             self._ws_url = self.WS_URL_GLOBAL
         self._normalize_pair = pair_normalizer
-        self._ws = None
-        self._task: asyncio.Task | None = None
-        self._running = False
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    async def start(self, event_queue: asyncio.Queue) -> None:
-        self._running = True
-        self._task = asyncio.create_task(self._run_loop(event_queue))
-
-    async def stop(self) -> None:
-        self._running = False
-        if self._ws:
-            await self._ws.close()
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
 
     # ------------------------------------------------------------------
     # Authentication helpers
@@ -117,53 +92,8 @@ class OkxOrderEventStream:
         })
 
     # ------------------------------------------------------------------
-    # Connection loop with reconnection
+    # Connection and streaming (implements abstract method)
     # ------------------------------------------------------------------
-
-    async def _run_loop(self, event_queue: asyncio.Queue) -> None:
-        retries = 0
-
-        while self._running:
-            try:
-                await self._connect_and_stream(event_queue)
-                if not self._running:
-                    break
-                retries = 0
-
-            except (websockets.ConnectionClosed, OSError, asyncio.TimeoutError) as exc:
-                if not self._running:
-                    break
-                retries += 1
-                logger.warning(
-                    "OKX private WS lost (attempt %d/%d): %s",
-                    retries, self.MAX_RETRIES, exc,
-                )
-                if retries >= self.MAX_RETRIES:
-                    await event_queue.put({
-                        "type": "status",
-                        "exchange": "okx",
-                        "connectionStatus": "disconnected",
-                    })
-                    break
-                await event_queue.put({
-                    "type": "status",
-                    "exchange": "okx",
-                    "connectionStatus": "reconnecting",
-                })
-                delay = self.BACKOFF_DELAYS_S[min(retries - 1, len(self.BACKOFF_DELAYS_S) - 1)]
-                await asyncio.sleep(delay)
-
-            except asyncio.CancelledError:
-                break
-
-            except Exception as exc:
-                logger.error("OKX private WS unexpected error: %s", exc, exc_info=True)
-                await event_queue.put({
-                    "type": "status",
-                    "exchange": "okx",
-                    "connectionStatus": "disconnected",
-                })
-                break
 
     async def _connect_and_stream(self, event_queue: asyncio.Queue) -> None:
         extra_headers = {}
@@ -176,11 +106,7 @@ class OkxOrderEventStream:
             await self._authenticate(ws)
             await self._subscribe_orders(ws)
 
-            await event_queue.put({
-                "type": "status",
-                "exchange": "okx",
-                "connectionStatus": "connected",
-            })
+            await self._emit_status_async(event_queue, "connected")
 
             ping_task = asyncio.create_task(self._ping_loop(ws))
             try:
