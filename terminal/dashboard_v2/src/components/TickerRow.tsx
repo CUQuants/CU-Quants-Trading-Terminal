@@ -48,7 +48,7 @@ function MiniLevel({
           isBid ? "text-green-400 text-right" : "text-red-400 text-left"
         }`}
       >
-        {formatNum(level.price)}
+        {formatNum(level.price, 5)}
       </span>
     </div>
   );
@@ -117,7 +117,7 @@ export function TickerRow({
             {/* Spread pill */}
             <div className="shrink-0 px-2 mx-1 py-0.5 rounded bg-white/5 border border-white/10">
               <span className="font-mono text-[10px] text-white/40 whitespace-nowrap">
-                {spread!.bps.toFixed(1)} bps
+                {spread!.bps.toFixed(4)} bps
               </span>
             </div>
 

@@ -1,6 +1,7 @@
 import { useOkxWs } from "../contexts/OkxWsContext";
 import { useKrakenWs } from "../contexts/KrakenWsContext";
 import { useOrderEvents } from "../contexts/OrderEventsContext";
+import quantsLogo from "../assets/quants_dark.png";
 
 export type View = "dashboard" | "trades" | "account";
 
@@ -59,14 +60,12 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
     <header className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-gradient-to-r from-white/[0.03] to-transparent">
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-3">
-          <span className="text-2xl leading-none">📊</span>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent leading-tight">
-              CU Quants Trading Terminal
+          <img src={quantsLogo} alt="" className="h-9 w-auto object-contain" />
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-lg font-bold tracking-tight text-white leading-tight">
+              SharkLazer
             </h1>
-            <span className="text-[10px] uppercase tracking-widest text-white/25">
-              Live Market Data
-            </span>
+            <span className="text-xs text-white/50 font-medium">by CU Quants</span>
           </div>
         </div>
 

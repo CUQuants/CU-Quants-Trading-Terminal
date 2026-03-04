@@ -25,7 +25,7 @@ export function OrderItem({ order, onCancel, isCancelling }: Props) {
         {order.price != null
           ? order.price.toLocaleString(undefined, {
               minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
+              maximumFractionDigits: 5,
             })
           : "Market"}
       </span>

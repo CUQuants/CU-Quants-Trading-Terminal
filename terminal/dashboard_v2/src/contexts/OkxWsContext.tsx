@@ -8,8 +8,9 @@ import type { OkxBookMessage, OkxRawLevel } from "../types/orderbook";
 import type { OrderbookLevel } from "../types/orderbook";
 
 function toNativePair(pair: string): string {
-  const [base, quote] = pair.split("/");
-  return `${base}-${quote === "USD" ? "USDT" : quote}`;
+  const [base, quote] = pair.split("/").map((s) => s.trim().toUpperCase());
+  const okxQuote = quote === "USD" || quote === "USDT" ? "USDT" : quote;
+  return `${base}-${okxQuote}`;
 }
 
 function fromNativePair(native: string): string {
@@ -52,6 +53,7 @@ const okxAdapter: ExchangeWsAdapter = {
 
     return {
       pair,
+      instId: bookMsg.arg.instId,
       type: bookMsg.action,
       bids: parseOkxLevels(d.bids),
       asks: parseOkxLevels(d.asks),

@@ -43,7 +43,7 @@ export function OkxView({ symbol, depth = 10 }: OkxViewProps) {
       )}
 
       {orderbook ? (
-        <Orderbook data={orderbook} />
+        <Orderbook data={orderbook} exchange="okx" pair={symbol} />
       ) : (
         <div className="text-center py-16 text-white/50 text-base">
           {isConnected ? "Waiting for data..." : "Click Connect to start"}

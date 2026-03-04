@@ -66,11 +66,11 @@ export function Orderbook({ data, exchange, pair }: OrderbookProps) {
           {spread && (
             <div className="flex items-center gap-3 font-mono text-sm sm:flex-col sm:gap-1">
               <span className="text-green-500 font-semibold">
-                {spread.bestBid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {spread.bestBid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })}
               </span>
               <span className="text-white/30 sm:rotate-90">↔</span>
               <span className="text-red-500 font-semibold">
-                {spread.bestAsk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {spread.bestAsk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })}
               </span>
             </div>
           )}

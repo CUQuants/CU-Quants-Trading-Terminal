@@ -30,7 +30,7 @@ export function OrderbookRow({ level, side, maxQty, hasMyOrder }: OrderbookRowPr
       >
         {level.price.toLocaleString(undefined, {
           minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
+          maximumFractionDigits: 5,
         })}
       </span>
       {hasMyOrder && (

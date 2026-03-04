@@ -33,6 +33,8 @@ export interface ExchangeWsContextValue {
 
 export interface NormalizedUpdate {
   pair: string;
+  /** Exchange instrument ID (e.g. OKX instId) for resolving to subscribed pair key */
+  instId?: string;
   type: "snapshot" | "update";
   bids: OrderbookLevel[];
   asks: OrderbookLevel[];
@@ -119,12 +121,19 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
           const parsed = adapter.parseMessage(raw);
           if (!parsed) return;
 
-          const { pair, type, bids, asks, checksum } = parsed;
-          if (!pairsRef.current.has(pair)) return;
+          const { pair, instId, type, bids, asks, checksum } = parsed;
+          const key =
+            instId &&
+            [...pairsRef.current].find(
+              (p) =>
+                adapter.toWirePair(p).toUpperCase() === instId.toUpperCase(),
+            );
+          const storageKey = (key ?? pair) as string;
+          if (!pairsRef.current.has(storageKey)) return;
 
           if (type === "snapshot") {
-            booksRef.current[pair] = {
-              symbol: pair,
+            booksRef.current[storageKey] = {
+              symbol: storageKey,
               bids: bids
                 .sort((a, b) => b.price - a.price)
                 .slice(0, DEPTH),
@@ -134,9 +143,9 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
               checksum,
             };
             dirtyRef.current = true;
-          } else if (type === "update" && booksRef.current[pair]) {
-            const cur = booksRef.current[pair];
-            booksRef.current[pair] = {
+          } else if (type === "update" && booksRef.current[storageKey]) {
+            const cur = booksRef.current[storageKey];
+            booksRef.current[storageKey] = {
               ...cur,
               bids:
                 bids.length > 0

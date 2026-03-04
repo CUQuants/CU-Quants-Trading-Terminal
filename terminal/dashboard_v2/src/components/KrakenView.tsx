@@ -43,7 +43,7 @@ export function KrakenView({ symbol, depth = 10 }: KrakenViewProps) {
       )}
 
       {orderbook ? (
-        <Orderbook data={orderbook} />
+        <Orderbook data={orderbook} exchange="kraken" pair={symbol} />
       ) : (
         <div className="text-center py-16 text-white/50 text-base">
           {isConnected ? "Waiting for data..." : "Click Connect to start"}

@@ -2,7 +2,7 @@
  * Format a number with locale-aware grouping and fixed decimal places.
  * Used across orderbook rows, ticker rows, trade tables, etc.
  */
-export function formatNum(n: number, decimals = 2): string {
+export function formatNum(n: number, decimals = 4): string {
   return n.toLocaleString(undefined, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
