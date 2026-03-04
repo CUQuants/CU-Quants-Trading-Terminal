@@ -2,6 +2,9 @@ from typing import Dict, List
 
 from exchange_services.exchange import ExchangeService
 from exchange_services.okx_service import OkxService
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 class ServiceContainer:
@@ -21,5 +24,5 @@ class ServiceContainer:
 
     def _create_service(self, service_name: str) -> ExchangeService:
         if service_name == "okx":
-            return OkxService(base_url="https://us.okx.com", simulated=True)
+            return OkxService(base_url="https://us.okx.com", simulated=os.getenv("SIMULATED") == "True")
         raise ValueError(f"No factory registered for service: {service_name}")

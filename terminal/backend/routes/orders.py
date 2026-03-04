@@ -1,9 +1,11 @@
+import logging
 from typing import List
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, Request
 
 from models import PlaceOrderRequest, OrderResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
@@ -46,6 +48,7 @@ async def place_order(request: Request, exchange: str, body: PlaceOrderRequest):
     service = request.app.state.service_container.get_service(exchange)
     order, error = await service.place_order(body)
     if error:
+        logger.warning("Order rejected: exchange=%s pair=%s side=%s error=%s", exchange, body.pair, body.side, error)
         raise HTTPException(status_code=400, detail=error)
     return order
 

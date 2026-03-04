@@ -1,3 +1,4 @@
+import logging
 import os
 import hmac
 import hashlib
@@ -29,9 +30,14 @@ class OkxService(ExchangeService):
 
     def __init__(self, base_url: str = "https://us.okx.com", simulated: bool = False):
         super().__init__(base_url)
-        self.api_key = os.getenv("OKX_API_KEY", "")
-        self.api_secret = os.getenv("OKX_API_SECRET", "")
-        self.passphrase = os.getenv("OKX_API_PASSPHRASE", "")
+        if simulated:
+            self.api_key = os.getenv("OKX_API_KEY_SIMULATED", "")
+            self.api_secret = os.getenv("OKX_API_SECRET_SIMULATED", "")
+            self.passphrase = os.getenv("OKX_API_PASSPHRASE_SIMULATED", "")
+        else:
+            self.api_key = os.getenv("OKX_API_KEY", "")
+            self.api_secret = os.getenv("OKX_API_SECRET", "")
+            self.passphrase = os.getenv("OKX_API_PASSPHRASE", "")
         self.simulated = simulated
         self._us = "us.okx.com" in base_url
         self._order_stream: OkxOrderEventStream | None = None
@@ -124,12 +130,20 @@ class OkxService(ExchangeService):
             return (None, str(e))
 
         if data.get("code") != "0":
-            err_msg = data.get("msg", "Order failed")
-            details = data.get("data", [])
+            err_msg = (data.get("msg") or "").strip()
+            details = data.get("data") or []
             if details and isinstance(details[0], dict):
-                s_msg = details[0].get("sMsg", "")
+                d0 = details[0]
+                s_msg = (d0.get("sMsg") or "").strip()
+                s_code = d0.get("sCode", "")
                 if s_msg:
                     err_msg = s_msg
+                elif s_code:
+                    err_msg = err_msg or f"Order failed (sCode={s_code})"
+            if not err_msg:
+                code = data.get("code", "")
+                err_msg = f"Order failed (code={code})" if code else "Order failed"
+                logging.getLogger(__name__).warning("OKX order rejected, could not parse error: %s", data)
             return (None, err_msg)
 
         order_id = data["data"][0]["ordId"]
