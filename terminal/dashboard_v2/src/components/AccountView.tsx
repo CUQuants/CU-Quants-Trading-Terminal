@@ -1,4 +1,5 @@
 import type { Exchange } from "../types/orderbook";
+import type { AllBalances, AllPositions } from "../types/account";
 import { formatNum, capitalize } from "../utils/format";
 import { useAccountBalances } from "../hooks/useAccountBalances";
 import { useAccountPositions } from "../hooks/useAccountPositions";
@@ -131,8 +132,10 @@ export function AccountView({ activeExchanges }: Props) {
     );
   }
 
-  const balancesData = balancesQuery.data ?? {};
-  const positionsData = positionsQuery.data ?? {};
+  const balancesData: Partial<Record<Exchange, AllBalances>> =
+    balancesQuery.data ?? {};
+  const positionsData: Partial<Record<Exchange, AllPositions>> =
+    positionsQuery.data ?? {};
 
   return (
     <div className="flex-1 flex flex-col">
