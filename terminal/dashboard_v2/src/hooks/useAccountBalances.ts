@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import type { Exchange } from "../types/orderbook";
+import { hasBackend } from "../types/orderbook";
 import type { AllBalances } from "../types/account";
 import { fetchAllBalances } from "../api/account";
 
@@ -9,14 +10,15 @@ import { fetchAllBalances } from "../api/account";
  * Failed exchanges are caught and toasts; successful data is returned.
  */
 export function useAccountBalances(activeExchanges: Exchange[]) {
-  const key = activeExchanges.slice().sort().join(",");
+  const supported = activeExchanges.filter(hasBackend);
+  const key = supported.slice().sort().join(",");
 
   return useQuery<Record<Exchange, AllBalances>>({
     queryKey: ["account", "balances", key],
     queryFn: async () => {
       const failed: Exchange[] = [];
       const results = await Promise.all(
-        activeExchanges.map(async (exchange) => {
+        supported.map(async (exchange) => {
           try {
             const data = await fetchAllBalances(exchange);
             return { exchange, data } as const;
@@ -38,7 +40,7 @@ export function useAccountBalances(activeExchanges: Exchange[]) {
       }
       return out;
     },
-    enabled: activeExchanges.length > 0,
+    enabled: supported.length > 0,
     staleTime: 30_000,
   });
 }

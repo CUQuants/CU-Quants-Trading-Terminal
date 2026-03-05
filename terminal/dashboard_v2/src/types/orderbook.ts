@@ -1,4 +1,4 @@
-export type Exchange = "kraken" | "okx";
+export type Exchange = "kraken" | "okx" | "gemini";
 
 export interface OrderbookLevel {
   price: number;
@@ -65,4 +65,20 @@ export interface OkxBookMessage {
 export const EXCHANGE_SYMBOLS: Record<Exchange, string[]> = {
   kraken: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
   okx: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
+  gemini: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
 };
+
+/**
+ * Exchanges that have a backend relay at localhost:8000
+ * (order events WS, REST orders, account endpoints).
+ * Gemini currently only provides public market data via its own WS.
+ */
+export const BACKEND_EXCHANGES: ReadonlySet<Exchange> = new Set<Exchange>([
+  "kraken",
+  "okx",
+]);
+
+/** Type-guard helper: returns true if the exchange has backend support. */
+export function hasBackend(exchange: Exchange): boolean {
+  return BACKEND_EXCHANGES.has(exchange);
+}
