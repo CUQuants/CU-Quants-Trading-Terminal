@@ -44,6 +44,7 @@ export function RowConfigPanel({ configuredPairs, onAdd }: Props) {
       >
         <option value="kraken">Kraken</option>
         <option value="okx">OKX</option>
+        <option value="gemini">Gemini</option>
       </select>
 
       <div className="relative flex-1 max-w-[200px]">

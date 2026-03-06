@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Exchange } from "../types/orderbook";
+import { hasBackend } from "../types/orderbook";
 import { fetchAvailableCash } from "../api/account";
 
 /**
@@ -10,7 +11,7 @@ export function useAvailableCash(exchange: Exchange, pair: string) {
   return useQuery({
     queryKey: ["account", "cash", exchange, pair],
     queryFn: () => fetchAvailableCash(exchange, pair),
-    enabled: !!exchange && !!pair,
+    enabled: !!exchange && !!pair && hasBackend(exchange),
     staleTime: 0,
     refetchOnMount: "always",
   });

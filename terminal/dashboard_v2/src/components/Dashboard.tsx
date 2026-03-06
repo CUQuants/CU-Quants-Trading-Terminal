@@ -4,6 +4,7 @@ import type { Exchange } from "../types/orderbook";
 import type { RowConfig } from "../hooks/useRowConfig";
 import { useOkxWs } from "../contexts/OkxWsContext";
 import { useKrakenWs } from "../contexts/KrakenWsContext";
+import { useGeminiWs } from "../contexts/GeminiWsContext";
 import { RowConfigPanel } from "./RowConfigPanel";
 import { TickerRow } from "./TickerRow";
 import { OrderPanel } from "./OrderPanel";
@@ -23,24 +24,28 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
   const queryClient = useQueryClient();
   const okxWs = useOkxWs();
   const krakenWs = useKrakenWs();
+  const geminiWs = useGeminiWs();
   const [selected, setSelected] = useState<SelectedTicker | null>(null);
 
   useEffect(() => {
     for (const pair of config.exchanges.okx) okxWs.subscribe(pair);
     for (const pair of config.exchanges.kraken) krakenWs.subscribe(pair);
+    for (const pair of config.exchanges.gemini) geminiWs.subscribe(pair);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleAdd(exchange: Exchange, pair: string) {
     onAddPair(exchange, pair);
     if (exchange === "okx") okxWs.subscribe(pair);
-    else krakenWs.subscribe(pair);
+    else if (exchange === "kraken") krakenWs.subscribe(pair);
+    else if (exchange === "gemini") geminiWs.subscribe(pair);
   }
 
   function handleRemove(exchange: Exchange, pair: string) {
     onRemovePair(exchange, pair);
     if (exchange === "okx") okxWs.unsubscribe(pair);
-    else krakenWs.unsubscribe(pair);
+    else if (exchange === "kraken") krakenWs.unsubscribe(pair);
+    else if (exchange === "gemini") geminiWs.unsubscribe(pair);
     queryClient.removeQueries({ queryKey: ["orders", exchange, pair] });
 
     if (selected?.exchange === exchange && selected?.pair === pair) {
@@ -57,12 +62,16 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
       exchange: "okx" as Exchange,
       pair,
     })),
+    ...config.exchanges.gemini.map((pair) => ({
+      exchange: "gemini" as Exchange,
+      pair,
+    })),
   ];
 
   function getOrderbook(exchange: Exchange, pair: string) {
-    return exchange === "okx"
-      ? okxWs.orderbook[pair]
-      : krakenWs.orderbook[pair];
+    if (exchange === "okx") return okxWs.orderbook[pair];
+    if (exchange === "gemini") return geminiWs.orderbook[pair];
+    return krakenWs.orderbook[pair];
   }
 
   return (
