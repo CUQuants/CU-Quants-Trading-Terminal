@@ -1,0 +1,2 @@
+https://docs.gemini.com/llms.txt
+my task is to set up the websocket for pulling public price data

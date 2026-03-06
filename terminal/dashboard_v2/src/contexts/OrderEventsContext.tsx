@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Exchange } from "../types/orderbook";
+import { hasBackend } from "../types/orderbook";
 import type { BackendWsMessage } from "../types/orders";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -34,6 +35,7 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const [status, setStatus] = useState<Record<Exchange, EventsStatus>>({
     kraken: "idle",
     okx: "idle",
+    gemini: "idle",
   });
 
   const wsMapRef = useRef<Record<string, WebSocket>>({});
@@ -45,9 +47,9 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   useEffect(() => {
     const activeSet = new Set(activeExchanges);
 
-    // Open connections for newly active exchanges
+    // Open connections for newly active exchanges (skip exchanges without backend)
     for (const exchange of activeExchanges) {
-      if (!wsMapRef.current[exchange]) {
+      if (hasBackend(exchange) && !wsMapRef.current[exchange]) {
         connectExchange(exchange);
       }
     }
