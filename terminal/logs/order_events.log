@@ -1,0 +1,30 @@
+2026-03-07 20:29:07,155 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:29:08,500 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:29:10,834 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "disconnected"}
+2026-03-07 20:30:25,264 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:30:26,642 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:30:28,917 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "disconnected"}
+2026-03-07 20:30:42,882 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:30:44,139 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:30:46,401 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "disconnected"}
+2026-03-07 20:42:49,076 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:42:49,646 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:42:50,932 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "reconnecting"}
+2026-03-07 20:42:53,268 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "disconnected"}
+2026-03-07 20:48:23,542 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 20:49:02,469 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:37:17,084 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:39:27,468 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369441008506163200", "status": "live", "side": "buy", "price": 2000.0, "size": 1.0, "timestamp": "1772919567201"}
+2026-03-07 21:39:27,469 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369441008506163200", "status": "filled", "side": "buy", "price": 2000.0, "size": 1.0, "timestamp": "1772919567202"}
+2026-03-07 21:47:00,316 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:47:04,514 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:48:40,000 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:49:36,623 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:49:57,913 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 21:50:05,932 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 22:06:12,088 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-07 22:06:23,254 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369495224515874816", "status": "live", "side": "buy", "price": 1971.0, "size": 1.0, "timestamp": "1772921182964"}
+2026-03-07 22:06:23,255 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369495224515874816", "status": "partially_filled", "side": "buy", "price": 1971.0, "size": 1.0, "timestamp": "1772921182965"}
+2026-03-07 22:06:23,255 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369495224515874816", "status": "partially_filled", "side": "buy", "price": 1971.0, "size": 1.0, "timestamp": "1772921182965"}
+2026-03-07 22:06:23,255 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369495224515874816", "status": "filled", "side": "buy", "price": 1971.0, "size": 1.0, "timestamp": "1772921182965"}
+2026-03-07 22:10:59,986 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}

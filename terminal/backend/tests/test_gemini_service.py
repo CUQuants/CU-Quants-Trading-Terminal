@@ -100,19 +100,22 @@ async def test_get_trades_pair_filter_and_limit():
     """get_trades with pair filter requests correct symbol; limit caps results."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    captured_path_or_body = None
+    captured_headers = None
 
     async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_path_or_body
-        captured_path_or_body = body if body else path
+        nonlocal captured_headers
+        captured_headers = headers
         return GEMINI_TRADES_RESPONSE[:1]
 
     with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
         await gemini.get_trades(pair="ETH/USD", limit=5)
 
-    assert captured_path_or_body is not None
-    # Implementation will pass symbol and limit in request
-    assert "ETH" in str(captured_path_or_body) or "eth" in str(captured_path_or_body).lower()
+    assert captured_headers is not None
+    # The payload (including symbol) is base64-encoded in the X-GEMINI-PAYLOAD header
+    import base64, json
+    payload = json.loads(base64.b64decode(captured_headers["X-GEMINI-PAYLOAD"]))
+    assert payload["symbol"] == "ethusd"
+    assert payload["limit_trades"] == 5
 
 
 @pytest.mark.asyncio
