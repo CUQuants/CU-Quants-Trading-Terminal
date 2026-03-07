@@ -22,7 +22,7 @@ function App() {
     if (config.exchanges.okx.length > 0) result.push("okx");
     if (config.exchanges.gemini.length > 0) result.push("gemini");
     return result;
-  }, [config.exchanges.kraken.length, config.exchanges.okx.length, config.exchanges.gemini?.length]);
+  }, [config.exchanges.kraken?.length, config.exchanges.okx?.length, config.exchanges.gemini?.length]);
 
   return (
     <OrderEventsProvider activeExchanges={activeExchanges}>
