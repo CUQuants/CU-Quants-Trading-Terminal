@@ -28,3 +28,14 @@
 2026-03-07 22:06:23,255 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369495224515874816", "status": "partially_filled", "side": "buy", "price": 1971.0, "size": 1.0, "timestamp": "1772921182965"}
 2026-03-07 22:06:23,255 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3369495224515874816", "status": "filled", "side": "buy", "price": 1971.0, "size": 1.0, "timestamp": "1772921182965"}
 2026-03-07 22:10:59,986 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:43:11,823 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:44:34,418 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:44:55,618 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:48:13,814 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:55:36,255 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:56:10,678 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:57:21,861 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:58:26,045 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 00:59:16,414 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 01:00:59,633 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-03-08 01:01:23,369 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
