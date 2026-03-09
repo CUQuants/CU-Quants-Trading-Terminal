@@ -231,6 +231,123 @@ async def test_place_order_returns_error_on_gemini_failure():
     assert "Insufficient" in err or "balance" in err.lower()
 
 
+@pytest.mark.asyncio
+async def test_place_order_market_buy_uses_ioc_and_buffered_ticker_price():
+    """Market buy should be sent as IOC limit with a modest ask-price buffer."""
+    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+
+    captured_payload = None
+
+    async def capture_request(method, path, body=None, headers=None):
+        nonlocal captured_payload
+        if method == "GET" and path == "/v2/ticker/solusd":
+            return {"ask": "100.00", "bid": "99.50", "last": "99.80"}
+        if method == "POST" and path == "/v1/order/new":
+            import base64, json
+            captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
+            return {"order_id": "1", "is_live": True, "timestamp": "1730385593"}
+        return {}
+
+    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
+        order, err = await gemini.place_order(
+            PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1),
+        )
+
+    assert err is None
+    assert order is not None
+    assert captured_payload is not None
+    assert captured_payload["type"] == "exchange limit"
+    assert captured_payload["options"] == ["immediate-or-cancel"]
+    assert captured_payload["price"] == "100.5"
+
+
+@pytest.mark.asyncio
+async def test_place_order_market_uses_symbol_increment_rounding():
+    """Market IOC prices should be rounded to Gemini quote increment."""
+    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+
+    captured_payloads = []
+
+    async def capture_request(method, path, body=None, headers=None):
+        if method == "GET" and path == "/v1/symbols/details/ethusd":
+            return {"quote_increment": "0.01"}
+        if method == "GET" and path == "/v2/ticker/ethusd":
+            return {"ask": "3047.50", "bid": "3047.00", "last": "3047.20"}
+        if method == "POST" and path == "/v1/order/new":
+            import base64, json
+            payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
+            captured_payloads.append(payload)
+            return {"order_id": str(len(captured_payloads)), "is_live": True, "timestamp": "1730385593"}
+        return {}
+
+    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
+        _, buy_err = await gemini.place_order(
+            PlaceOrderRequest(pair="ETH/USD", side="buy", type="market", size=0.01),
+        )
+        _, sell_err = await gemini.place_order(
+            PlaceOrderRequest(pair="ETH/USD", side="sell", type="market", size=0.01),
+        )
+
+    assert buy_err is None
+    assert sell_err is None
+    assert len(captured_payloads) == 2
+    # buy: 3047.50 * 1.005 = 3062.7375 -> round up to 0.01 = 3062.74
+    assert captured_payloads[0]["price"] == "3062.74"
+    # sell: 3047.00 * 0.995 = 3031.765 -> round down to 0.01 = 3031.76
+    assert captured_payloads[1]["price"] == "3031.76"
+
+
+@pytest.mark.asyncio
+async def test_place_order_limit_price_is_rounded_to_increment():
+    """Limit order prices should be normalized to valid quote increment."""
+    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+
+    captured_payload = None
+
+    async def capture_request(method, path, body=None, headers=None):
+        nonlocal captured_payload
+        if method == "GET" and path == "/v1/symbols/details/ethusd":
+            return {"quote_increment": "0.01"}
+        if method == "POST" and path == "/v1/order/new":
+            import base64, json
+            captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
+            return {"order_id": "1", "is_live": True, "timestamp": "1730385593"}
+        return {}
+
+    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
+        order, err = await gemini.place_order(
+            PlaceOrderRequest(pair="ETH/USD", side="buy", type="limit", size=0.01, price=3047.57555),
+        )
+
+    assert err is None
+    assert order is not None
+    assert captured_payload is not None
+    assert captured_payload["price"] == "3047.58"
+
+
+@pytest.mark.asyncio
+async def test_gemini_request_omits_account_when_not_configured():
+    """`account` should only be sent when explicitly configured."""
+    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+    gemini.api_key = "non-master-key"
+    gemini.is_master_api_key = False
+    gemini.account = ""
+
+    captured_payload = None
+
+    async def capture_request(method, path, body=None, headers=None):
+        nonlocal captured_payload
+        import base64, json
+        captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
+        return []
+
+    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
+        await gemini.get_trades(pair="ETH/USD", limit=1)
+
+    assert captured_payload is not None
+    assert "account" not in captured_payload
+
+
 # ---------------------------------------------------------------------------
 # Order lifecycle (integration - requires API keys)
 # ---------------------------------------------------------------------------

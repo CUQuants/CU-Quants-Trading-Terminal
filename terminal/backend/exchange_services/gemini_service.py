@@ -6,8 +6,10 @@ import json
 import os
 import time
 import logging
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from typing import Dict, List, Optional, Tuple
 
+import httpx
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -40,11 +42,25 @@ class GeminiService(ExchangeService):
         if simulated:
             self.api_key = os.getenv("GEMINI_API_KEY_SIMULATED", "")
             self.api_secret = os.getenv("GEMINI_API_SECRET_SIMULATED", "")
-            self.account = os.getenv("GEMINI_ACCOUNT_SIMULATED", "primary")
+            self.account = os.getenv("GEMINI_ACCOUNT_SIMULATED", "")
         else:
             self.api_key = os.getenv("GEMINI_API_KEY", "")
             self.api_secret = os.getenv("GEMINI_API_SECRET", "")
-            self.account = os.getenv("GEMINI_ACCOUNT", "primary")
+            self.account = os.getenv("GEMINI_ACCOUNT", "")
+
+        self.account = self.account.strip()
+        self.is_master_api_key = self.api_key.startswith("master-")
+        if self.is_master_api_key and not self.account:
+            self.account = "primary"
+
+        slippage_bps_raw = os.getenv("GEMINI_MARKET_SLIPPAGE_BPS", "50").strip()
+        try:
+            slippage_bps = float(slippage_bps_raw)
+        except ValueError:
+            slippage_bps = 50.0
+        # Clamp to a sane range (0.01% .. 5.00%).
+        self.market_slippage_bps = min(max(slippage_bps, 1.0), 500.0)
+        self._quote_increment_cache: Dict[str, Decimal] = {}
     # ------------------------------------------------------------------
     # Auth / signing
     # ------------------------------------------------------------------
@@ -63,6 +79,7 @@ class GeminiService(ExchangeService):
         return {
             "Content-Type": "text/plain",
             "Content-Length": "0",
+            "Accept": "application/json",
             "X-GEMINI-APIKEY": self.api_key,
             "X-GEMINI-PAYLOAD": payload_b64,
             "X-GEMINI-SIGNATURE": signature,
@@ -75,9 +92,90 @@ class GeminiService(ExchangeService):
 
     async def _gemini_request(self, method: str, path: str, payload: dict) -> dict:
         """Build auth headers from *payload*, send with empty body, return JSON."""
-        payload.setdefault("account", self.account)
+        if self.account:
+            payload.setdefault("account", self.account)
         headers = self._get_headers(payload)
         return await self._request(method, path, body="", headers=headers)
+
+    async def _resolve_market_ioc_price(self, symbol: str, side: str, explicit_price: Optional[float]) -> str:
+        """Use a near-touch IOC price to emulate market orders on Gemini."""
+        if explicit_price is not None:
+            return await self._normalize_price(symbol, side, explicit_price)
+
+        try:
+            ticker = await self._request("GET", f"/v2/ticker/{symbol}")
+            if side == "buy":
+                ref = float(ticker.get("ask") or ticker.get("last") or ticker.get("bid") or 0)
+            else:
+                ref = float(ticker.get("bid") or ticker.get("last") or ticker.get("ask") or 0)
+        except Exception:
+            ref = 0.0
+
+        if ref > 0:
+            slip = self.market_slippage_bps / 10_000
+            buffered = ref * (1 + slip if side == "buy" else 1 - slip)
+            return await self._normalize_price(symbol, side, buffered)
+
+        # Fallback to permissive limits if ticker lookup fails.
+        return "999999" if side == "buy" else "0.01"
+
+    async def _get_quote_increment(self, symbol: str) -> Decimal:
+        cached = self._quote_increment_cache.get(symbol)
+        if cached is not None:
+            return cached
+
+        increment = Decimal("0.01")
+        try:
+            details = await self._request("GET", f"/v1/symbols/details/{symbol}")
+            raw_increment = details.get("quote_increment") or details.get("tick_size")
+            if raw_increment:
+                increment = Decimal(str(raw_increment))
+        except Exception:
+            pass
+
+        if increment <= 0:
+            increment = Decimal("0.01")
+        self._quote_increment_cache[symbol] = increment
+        return increment
+
+    async def _normalize_price(self, symbol: str, side: str, raw_price: float) -> str:
+        increment = await self._get_quote_increment(symbol)
+        price = Decimal(str(raw_price))
+        if price <= 0:
+            price = increment
+
+        # Keep IOC emulation aggressive while staying on a valid tick.
+        rounding = ROUND_CEILING if side == "buy" else ROUND_FLOOR
+        normalized = (price / increment).to_integral_value(rounding=rounding) * increment
+        if normalized <= 0:
+            normalized = increment
+        return format(normalized.normalize(), "f")
+
+    @staticmethod
+    def _extract_error_message(exc: Exception) -> str:
+        """Extract useful error details from Gemini HTTP responses."""
+        if not isinstance(exc, httpx.HTTPStatusError):
+            return str(exc)
+
+        response = exc.response
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                reason = payload.get("reason")
+                message = payload.get("message")
+                if reason and message:
+                    return f"{reason}: {message}"
+                if message:
+                    return str(message)
+                if reason:
+                    return str(reason)
+        except Exception:
+            pass
+
+        text = (response.text or "").strip()
+        if text:
+            return f"HTTP {response.status_code}: {text}"
+        return str(exc)
 
     # ------------------------------------------------------------------
     # Pair normalization
@@ -113,31 +211,27 @@ class GeminiService(ExchangeService):
     ) -> Tuple[Optional[OrderResponse], Optional[str]]:
         request_path = "/v1/order/new"
         symbol = self._to_native_pair(request.pair)
-
-        if request.type == "market":
-            order_type = "exchange limit"
-            options = ["immediate-or-cancel"]
-            price = str(request.price) if request.price else "999999" if request.side == "buy" else "0.01"
-        else:
-            order_type = "exchange limit"
-            options = []
-            price = str(request.price) if request.price else "0"
-
         payload = {
             "request": request_path,
             "nonce": self._get_nonce(),
             "symbol": symbol,
             "amount": str(request.size),
-            "price": price,
             "side": request.side,
-            "type": order_type,
-            "options": options,
+            "type": "exchange limit",
         }
+
+        if request.type == "market":
+            payload["price"] = await self._resolve_market_ioc_price(symbol, request.side, request.price)
+            payload["options"] = ["immediate-or-cancel"]
+        else:
+            if request.price is None:
+                return (None, "Limit orders require price")
+            payload["price"] = await self._normalize_price(symbol, request.side, request.price)
 
         try:
             data = await self._gemini_request("POST", request_path, payload)
         except Exception as e:
-            return (None, str(e))
+            return (None, self._extract_error_message(e))
 
         if isinstance(data, dict) and data.get("result") == "error":
             msg = data.get("message") or data.get("reason") or "Order failed"
