@@ -52,7 +52,8 @@ class GeminiService(ExchangeService):
         self.is_master_api_key = self.api_key.startswith("master-")
         if self.is_master_api_key and not self.account:
             self.account = "primary"
-
+        # Can put value of market slippage value in .env value
+        # Default set to .50% (50 bps) if not set or invalid
         slippage_bps_raw = os.getenv("GEMINI_MARKET_SLIPPAGE_BPS", "50").strip()
         try:
             slippage_bps = float(slippage_bps_raw)
@@ -97,8 +98,9 @@ class GeminiService(ExchangeService):
         headers = self._get_headers(payload)
         return await self._request(method, path, body="", headers=headers)
 
+    # Market orders on Gemini are emulated using aggressive IOC limit orders. 
+    # This method calculates a suitable price for that purpose.
     async def _resolve_market_ioc_price(self, symbol: str, side: str, explicit_price: Optional[float]) -> str:
-        """Use a near-touch IOC price to emulate market orders on Gemini."""
         if explicit_price is not None:
             return await self._normalize_price(symbol, side, explicit_price)
 
