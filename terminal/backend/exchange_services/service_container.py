@@ -2,6 +2,7 @@ from typing import Dict, List
 
 from exchange_services.exchange import ExchangeService
 from exchange_services.okx_service import OkxService
+from exchange_services.gemini_service import GeminiService
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -11,7 +12,7 @@ class ServiceContainer:
 
     def __init__(self):
         self.services: Dict[str, ExchangeService] = {}
-        self.available_services: List[str] = ["okx"]
+        self.available_services: List[str] = ["okx", "gemini"]
 
     def get_service(self, service_name: str) -> ExchangeService:
         if service_name not in self.available_services:
@@ -25,4 +26,6 @@ class ServiceContainer:
     def _create_service(self, service_name: str) -> ExchangeService:
         if service_name == "okx":
             return OkxService(base_url="https://us.okx.com", simulated=os.getenv("SIMULATED") == "True")
+        if service_name == "gemini":
+            return GeminiService(simulated=os.getenv("SIMULATED") == "True")
         raise ValueError(f"No factory registered for service: {service_name}")

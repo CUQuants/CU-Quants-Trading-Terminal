@@ -76,6 +76,7 @@ export const EXCHANGE_SYMBOLS: Record<Exchange, string[]> = {
 export const BACKEND_EXCHANGES: ReadonlySet<Exchange> = new Set<Exchange>([
   "kraken",
   "okx",
+  "gemini",
 ]);
 
 /** Type-guard helper: returns true if the exchange has backend support. */
