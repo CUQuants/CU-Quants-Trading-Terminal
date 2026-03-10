@@ -1,43 +1,51 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import logging
-from typing import Callable, Sequence
+import time
+from urllib.parse import urlencode
+from typing import Callable
 
+import httpx
 import websockets
 
 logger = logging.getLogger(__name__)
 
+KRAKEN_STATE_MAP = {
+    "pending_new": "live",
+    "new": "live",
+    "partially_filled": "partially_filled",
+    "filled": "filled",
+    "canceled": "canceled",
+    "expired": "canceled", # Mapping expired to canceled, we'll probably want to change this
+    "rejected": "rejected",
+}
+
 
 class KrakenOrderEventStream:
-    """Public WebSocket v2 connection to Kraken.
+    """Authenticated WebSocket v2 stream for Kraken order lifecycle events."""
 
-    This class mirrors the OkxOrderEventStream lifecycle so it can plug into the
-    same relay. Because it uses only public WS v2 (`wss://ws.kraken.com/v2`),
-    it can publish connection status and market-driven synthetic events, but it
-    cannot stream true account order lifecycle updates.
-    """
-
-    WS_URL = "wss://ws.kraken.com/v2"
-    PING_INTERVAL_S = 25
+    WS_URL = "wss://ws-auth.kraken.com/v2"
+    REST_URL = "https://api.kraken.com"
+    TOKEN_PATH = "/0/private/GetWebSocketsToken"
     MAX_RETRIES = 3
     BACKOFF_DELAYS_S = [1, 2, 4]
 
     def __init__(
         self,
-        symbols: Sequence[str] | None = None,
+        api_key: str,
+        api_secret: str,
         pair_normalizer: Callable[[str], str] = lambda x: x,
     ):
-        # Public ticker channel requires at least one symbol.
-        self._symbols = list(symbols) if symbols else ["BTC/USD"]
+        self._api_key = api_key
+        self._api_secret = api_secret
         self._normalize_pair = pair_normalizer
         self._ws = None
         self._task: asyncio.Task | None = None
         self._running = False
-        self._req_id = 0
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        self._order_cache: dict[str, dict] = {}
 
     async def start(self, event_queue: asyncio.Queue) -> None:
         self._running = True
@@ -54,10 +62,57 @@ class KrakenOrderEventStream:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        self._order_cache.clear()
 
-    # ------------------------------------------------------------------
-    # Connection loop with reconnection
-    # ------------------------------------------------------------------
+    def _rest_sign(self, nonce: str, post_data: str, path: str) -> str:
+        """Generate Kraken API-Sign for private REST requests."""
+        sha256 = hashlib.sha256((nonce + post_data).encode()).digest()
+        message = path.encode() + sha256
+        secret = base64.b64decode(self._api_secret)
+        mac = hmac.new(secret, message, hashlib.sha512).digest()
+        return base64.b64encode(mac).decode()
+
+    async def _fetch_ws_token(self) -> str:
+        nonce = str(int(time.time() * 1000))
+        post_data = urlencode({"nonce": nonce})
+        sign = self._rest_sign(nonce, post_data, self.TOKEN_PATH)
+        headers = {
+            "API-Key": self._api_key,
+            "API-Sign": sign,
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+        async with httpx.AsyncClient(base_url=self.REST_URL, timeout=10) as client:
+            resp = await client.post(
+                self.TOKEN_PATH, content=post_data, headers=headers
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+
+        if payload.get("error"):
+            raise ConnectionError(
+                f"Kraken WS token fetch failed: {payload.get('error')}"
+            )
+
+        token = (payload.get("result") or {}).get("token")
+        if not token:
+            raise ConnectionError(f"Kraken WS token missing in response: {payload}")
+        return token
+
+    @staticmethod
+    def _build_subscribe_msg(token: str) -> str:
+        return json.dumps(
+            {
+                "method": "subscribe",
+                "params": {
+                    "channel": "executions",
+                    "token": token,
+                    "snap_orders": True,
+                    "snap_trades": False,
+                    "order_status": True,
+                },
+            }
+        )
 
     async def _run_loop(self, event_queue: asyncio.Queue) -> None:
         retries = 0
@@ -68,166 +123,140 @@ class KrakenOrderEventStream:
                 if not self._running:
                     break
                 retries = 0
-
-            except (websockets.ConnectionClosed, OSError, asyncio.TimeoutError) as exc:
+            except (
+                websockets.ConnectionClosed,
+                OSError,
+                asyncio.TimeoutError,
+                httpx.HTTPError,
+            ) as exc:
                 if not self._running:
                     break
                 retries += 1
                 logger.warning(
-                    "Kraken public WS lost (attempt %d/%d): %s",
+                    "Kraken private WS lost (attempt %d/%d): %s",
                     retries,
                     self.MAX_RETRIES,
                     exc,
                 )
                 if retries >= self.MAX_RETRIES:
-                    await event_queue.put({
+                    await event_queue.put(
+                        {
+                            "type": "status",
+                            "exchange": "kraken",
+                            "connectionStatus": "disconnected",
+                        }
+                    )
+                    break
+                await event_queue.put(
+                    {
+                        "type": "status",
+                        "exchange": "kraken",
+                        "connectionStatus": "reconnecting",
+                    }
+                )
+                delay = self.BACKOFF_DELAYS_S[
+                    min(retries - 1, len(self.BACKOFF_DELAYS_S) - 1)
+                ]
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.error(
+                    "Kraken private WS unexpected error: %s", exc, exc_info=True
+                )
+                await event_queue.put(
+                    {
                         "type": "status",
                         "exchange": "kraken",
                         "connectionStatus": "disconnected",
-                    })
-                    break
-
-                await event_queue.put({
-                    "type": "status",
-                    "exchange": "kraken",
-                    "connectionStatus": "reconnecting",
-                })
-                delay = self.BACKOFF_DELAYS_S[min(retries - 1, len(self.BACKOFF_DELAYS_S) - 1)]
-                await asyncio.sleep(delay)
-
-            except asyncio.CancelledError:
-                break
-
-            except Exception as exc:
-                logger.error("Kraken public WS unexpected error: %s", exc, exc_info=True)
-                await event_queue.put({
-                    "type": "status",
-                    "exchange": "kraken",
-                    "connectionStatus": "disconnected",
-                })
+                    }
+                )
                 break
 
     async def _connect_and_stream(self, event_queue: asyncio.Queue) -> None:
-        async with websockets.connect(self.WS_URL) as ws:
+        self._order_cache.clear()
+        token = await self._fetch_ws_token()
+
+        async with websockets.connect(
+            self.WS_URL, ping_interval=20, ping_timeout=10
+        ) as ws:
             self._ws = ws
+            await self._subscribe_executions(ws, token)
 
-            await self._subscribe_ticker(ws)
-            await event_queue.put({
-                "type": "status",
-                "exchange": "kraken",
-                "connectionStatus": "connected",
-            })
+            await event_queue.put(
+                {
+                    "type": "status",
+                    "exchange": "kraken",
+                    "connectionStatus": "connected",
+                }
+            )
 
-            ping_task = asyncio.create_task(self._ping_loop(ws))
-            try:
-                async for raw in ws:
-                    try:
-                        data = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-
-                    # Public status/heartbeat/pong messages are useful for
-                    # liveness, but not order lifecycle.
-                    if data.get("method") == "pong":
-                        continue
-
-                    if data.get("channel") == "ticker":
-                        for item in data.get("data", []):
-                            event = self._normalize_ticker_to_synthetic_event(item)
-                            if event:
-                                await event_queue.put(event)
-            finally:
-                ping_task.cancel()
+            async for raw in ws:
                 try:
-                    await ping_task
-                except asyncio.CancelledError:
-                    pass
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
 
-    # ------------------------------------------------------------------
-    # Protocol helpers
-    # ------------------------------------------------------------------
+                if data.get("channel") != "executions":
+                    continue
 
-    async def _subscribe_ticker(self, ws) -> None:
-        self._req_id += 1
-        msg = {
-            "method": "subscribe",
-            "params": {
-                "channel": "ticker",
-                "symbol": self._symbols,
-                "event_trigger": "trades",
-                "snapshot": True,
-            },
-            "req_id": self._req_id,
-        }
-        await ws.send(json.dumps(msg))
+                for item in data.get("data", []):
+                    event = self._normalize_order_event(item)
+                    if event:
+                        await event_queue.put(event)
 
-        # Wait for subscribe ack; ignore unrelated status/heartbeat messages.
-        deadline = asyncio.get_running_loop().time() + 10
+    async def _subscribe_executions(self, ws, token: str) -> None:
+        await ws.send(self._build_subscribe_msg(token))
+
         while True:
-            remaining = deadline - asyncio.get_running_loop().time()
-            if remaining <= 0:
-                raise TimeoutError("Timed out waiting for Kraken WS subscribe ack")
+            resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
 
-            resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=remaining))
-            if resp.get("method") != "subscribe":
-                continue
-            if not resp.get("success", False):
+            if resp.get("method") == "subscribe" and resp.get("success") is False:
                 raise ConnectionError(f"Kraken WS subscribe failed: {resp}")
-            return
 
-    async def _ping_loop(self, ws) -> None:
-        try:
-            while True:
-                await asyncio.sleep(self.PING_INTERVAL_S)
-                self._req_id += 1
-                await ws.send(json.dumps({"method": "ping", "req_id": self._req_id}))
-        except (websockets.ConnectionClosed, asyncio.CancelledError):
-            pass
+            if (
+                resp.get("method") == "subscribe"
+                and resp.get("success") is True
+                and resp.get("result", {}).get("channel") == "executions"
+            ):
+                return
 
-    def _normalize_ticker_to_synthetic_event(self, item: dict) -> dict | None:
-        symbol = item.get("symbol")
-        if not symbol:
+    def _normalize_order_event(self, item: dict) -> dict | None:
+        order_id = item.get("order_id")
+        if not order_id:
             return None
 
-        price = self._coerce_float(item.get("last"), "price")
-        if price == 0:
-            price = self._coerce_float(item.get("bid"), "price")
-        if price == 0:
-            price = self._coerce_float(item.get("ask"), "price")
+        raw_status = item.get("order_status")
+        status = KRAKEN_STATE_MAP.get(raw_status)
+        if not status:
+            return None
 
-        size = self._coerce_float(item.get("volume"), "qty")
-        if size == 0:
-            size = self._coerce_float(item.get("bid_qty"), "qty")
-        if size == 0:
-            size = self._coerce_float(item.get("ask_qty"), "qty")
+        cache = self._order_cache.setdefault(order_id, {})
+        if item.get("symbol"):
+            cache["symbol"] = item["symbol"]
+        if item.get("side"):
+            cache["side"] = item["side"]
+        if item.get("order_qty") is not None:
+            cache["order_qty"] = item["order_qty"]
+        if item.get("limit_price") is not None:
+            cache["limit_price"] = item["limit_price"]
 
-        # Public ticker feed has no account order identifiers or state.
-        # Emit a synthetic event shape to keep downstream handling uniform.
-        return {
+        symbol = item.get("symbol") or cache.get("symbol") or ""
+        side = item.get("side") or cache.get("side") or ""
+        qty = item.get("order_qty", cache.get("order_qty", 0))
+        price = item.get("limit_price", cache.get("limit_price", 0))
+        timestamp = item.get("timestamp") or item.get("last_update_time") or ""
+        event = {
             "type": "order_event",
             "exchange": "kraken",
             "pair": self._normalize_pair(symbol),
-            "orderId": f"public-ticker:{symbol}",
-            "status": "live",
-            "side": "buy",
-            "price": price,
-            "size": size,
-            "timestamp": item.get("timestamp", ""),
+            "orderId": order_id,
+            "status": status,
+            "side": side,
+            "price": float(price or 0),
+            "size": float(qty or 0),
+            "timestamp": timestamp,
         }
-
-    @staticmethod
-    def _coerce_float(value, nested_key: str | None = None) -> float:
-        if value is None:
-            return 0.0
-        if isinstance(value, (int, float, str)):
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return 0.0
-        if isinstance(value, dict):
-            if nested_key and nested_key in value:
-                return KrakenOrderEventStream._coerce_float(value[nested_key], None)
-            for candidate in ("price", "qty", "value"):
-                if candidate in value:
-                    return KrakenOrderEventStream._coerce_float(value[candidate], None)
-        return 0.0
+        if status in {"filled", "canceled", "rejected"}:
+            self._order_cache.pop(order_id, None)
+        return event
