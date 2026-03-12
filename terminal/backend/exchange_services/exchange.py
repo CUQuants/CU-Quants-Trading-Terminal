@@ -29,7 +29,7 @@ class ExchangeService(ABC):
     @abstractmethod
     async def place_order(
         self, request: PlaceOrderRequest
-    ) -> Tuple[Optional[OrderResponse], Optional[str]]:
+    ) -> tuple[OrderResponse | None, str | None]:
         """Returns (order, error). On success: order set, error None. On failure: order None, error message."""
         pass
 
