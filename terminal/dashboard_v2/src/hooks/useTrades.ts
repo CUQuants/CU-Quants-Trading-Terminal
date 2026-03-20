@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import type { Exchange } from "../types/orderbook";
+import { hasBackend } from "../types/orderbook";
 import type { Trade } from "../types/trades";
 import { fetchTrades } from "../api/trades";
 
@@ -10,7 +11,8 @@ import { fetchTrades } from "../api/trades";
  * Exchanges that fail are caught individually so successful ones still display.
  */
 export function useTrades(activeExchanges: Exchange[]) {
-  const key = activeExchanges.slice().sort().join(",");
+  const supported = activeExchanges.filter(hasBackend);
+  const key = supported.slice().sort().join(",");
 
   return useQuery<Trade[]>({
     queryKey: ["trades", key],
@@ -18,7 +20,7 @@ export function useTrades(activeExchanges: Exchange[]) {
       const failed: Exchange[] = [];
 
       const results = await Promise.all(
-        activeExchanges.map((exchange) =>
+        supported.map((exchange) =>
           fetchTrades(exchange).catch(() => {
             failed.push(exchange);
             return [] as Trade[];
@@ -35,7 +37,7 @@ export function useTrades(activeExchanges: Exchange[]) {
         .flat()
         .sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
     },
-    enabled: activeExchanges.length > 0,
+    enabled: supported.length > 0,
     staleTime: 30_000,
   });
 }

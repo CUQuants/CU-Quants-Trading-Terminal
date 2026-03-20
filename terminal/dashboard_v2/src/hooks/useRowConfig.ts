@@ -14,6 +14,7 @@ const DEFAULT_CONFIG: RowConfig = {
   exchanges: {
     kraken: [],
     okx: [],
+    gemini: [],
   },
 };
 

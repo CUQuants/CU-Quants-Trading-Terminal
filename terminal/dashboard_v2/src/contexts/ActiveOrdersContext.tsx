@@ -7,6 +7,7 @@ import {
 import { useQueries } from "@tanstack/react-query";
 import { fetchOrders } from "../api/orders";
 import type { Exchange } from "../types/orderbook";
+import { hasBackend } from "../types/orderbook";
 import type { Order } from "../types/orders";
 
 interface ActiveOrdersContextValue {
@@ -41,14 +42,14 @@ interface Props {
 export function ActiveOrdersProvider({ configuredPairs, children }: Props) {
   const queries = useMemo(() => {
     const result: { exchange: Exchange; pair: string }[] = [];
-    // TODO: uncomment kraken when backend REST is working
-    // for (const pair of configuredPairs.kraken) {
-    //   result.push({ exchange: "kraken", pair });
-    // }
+    for (const pair of configuredPairs.kraken) {
+      result.push({ exchange: "kraken", pair });
+    }
     for (const pair of configuredPairs.okx) {
       result.push({ exchange: "okx", pair });
     }
-    return result;
+    // Only query exchanges that have a backend relay
+    return result.filter(({ exchange }) => hasBackend(exchange));
   }, [configuredPairs]);
 
   const orderQueries = useQueries({

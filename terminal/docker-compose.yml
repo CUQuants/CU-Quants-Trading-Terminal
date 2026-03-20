@@ -8,7 +8,9 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./dashboard_v2
+    build: 
+      context: ./dashboard_v2
+      no_cache: true
     ports:
       - "3000:5173"
     volumes:
