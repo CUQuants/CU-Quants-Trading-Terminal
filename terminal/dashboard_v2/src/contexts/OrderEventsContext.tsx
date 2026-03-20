@@ -5,19 +5,19 @@ import {
   useState,
   useEffect,
   useMemo,
-  useCallback,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Exchange } from "../types/orderbook";
 import { hasBackend } from "../types/orderbook";
-import type { BackendWsMessage } from "../types/orders";
+import type { BackendWsMessage, Order, OrderEvent } from "../types/orders";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 2000, 4000];
-const INVALIDATION_INTERVAL_MS = 500;
+
+const TERMINAL_STATUSES = new Set(["filled", "canceled"]);
 
 type EventsStatus = "connected" | "reconnecting" | "disconnected" | "idle";
 
@@ -32,6 +32,41 @@ interface Props {
   children: ReactNode;
 }
 
+function applyOrderEvent(prev: Order[] | undefined, event: OrderEvent): Order[] {
+  const orders = prev ?? [];
+
+  if (TERMINAL_STATUSES.has(event.status)) {
+    return orders.filter((o) => o.id !== event.orderId);
+  }
+
+  const idx = orders.findIndex((o) => o.id === event.orderId);
+  if (idx !== -1) {
+    const updated = [...orders];
+    updated[idx] = {
+      ...updated[idx],
+      status: event.status,
+      price: event.price || updated[idx].price,
+      size: event.size || updated[idx].size,
+    };
+    return updated;
+  }
+
+  return [
+    ...orders,
+    {
+      id: event.orderId,
+      pair: event.pair,
+      exchange: event.exchange,
+      side: event.side as Order["side"],
+      type: "limit",
+      price: event.price,
+      size: event.size,
+      status: event.status,
+      created_at: event.timestamp,
+    },
+  ];
+}
+
 export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<Record<Exchange, EventsStatus>>({
@@ -44,31 +79,6 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const retriesMapRef = useRef<Record<string, number>>({});
   const reconnectTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const closingRef = useRef<Set<string>>(new Set());
-
-  // Pending invalidation keys accumulated between flushes.
-  // Each entry is a serialised query key like "orders|kraken|BTC/USD".
-  const pendingInvalidations = useRef<Map<string, readonly [string, string]>>(
-    new Map(),
-  );
-
-  const flushInvalidations = useCallback(() => {
-    if (pendingInvalidations.current.size === 0) return;
-
-    const batch = new Map(pendingInvalidations.current);
-    pendingInvalidations.current.clear();
-
-    for (const [exchange, pair] of batch.values()) {
-      queryClient.invalidateQueries({
-        queryKey: ["orders", exchange, pair],
-      });
-    }
-  }, [queryClient]);
-
-  // Interval that flushes pending invalidations every INVALIDATION_INTERVAL_MS
-  useEffect(() => {
-    const id = setInterval(flushInvalidations, INVALIDATION_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [flushInvalidations]);
 
   // Connect / disconnect based on activeExchanges
   useEffect(() => {
@@ -104,8 +114,15 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
     wsMapRef.current[exchange] = ws;
 
     ws.onopen = () => {
+      const wasReconnect = (retriesMapRef.current[exchange] ?? 0) > 0;
       retriesMapRef.current[exchange] = 0;
       setStatus((prev) => ({ ...prev, [exchange]: "connected" }));
+
+      if (wasReconnect) {
+        queryClient.invalidateQueries({
+          queryKey: ["orders", exchange],
+        });
+      }
     };
 
     ws.onmessage = (ev: MessageEvent) => {
@@ -113,8 +130,10 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
         const data: BackendWsMessage = JSON.parse(ev.data as string);
 
         if (data.type === "order_event") {
-          const key = `${exchange}|${data.pair}`;
-          pendingInvalidations.current.set(key, [exchange, data.pair]);
+          queryClient.setQueryData<Order[]>(
+            ["orders", exchange, data.pair],
+            (prev) => applyOrderEvent(prev, data),
+          );
         } else if (data.type === "status") {
           setStatus((prev) => ({
             ...prev,
