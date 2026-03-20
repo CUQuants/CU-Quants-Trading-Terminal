@@ -5,6 +5,7 @@ import {
   useState,
   useEffect,
   useMemo,
+  useCallback,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,6 +17,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 2000, 4000];
+const INVALIDATION_INTERVAL_MS = 500;
 
 type EventsStatus = "connected" | "reconnecting" | "disconnected" | "idle";
 
@@ -43,18 +45,41 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const reconnectTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const closingRef = useRef<Set<string>>(new Set());
 
+  // Pending invalidation keys accumulated between flushes.
+  // Each entry is a serialised query key like "orders|kraken|BTC/USD".
+  const pendingInvalidations = useRef<Map<string, readonly [string, string]>>(
+    new Map(),
+  );
+
+  const flushInvalidations = useCallback(() => {
+    if (pendingInvalidations.current.size === 0) return;
+
+    const batch = new Map(pendingInvalidations.current);
+    pendingInvalidations.current.clear();
+
+    for (const [exchange, pair] of batch.values()) {
+      queryClient.invalidateQueries({
+        queryKey: ["orders", exchange, pair],
+      });
+    }
+  }, [queryClient]);
+
+  // Interval that flushes pending invalidations every INVALIDATION_INTERVAL_MS
+  useEffect(() => {
+    const id = setInterval(flushInvalidations, INVALIDATION_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [flushInvalidations]);
+
   // Connect / disconnect based on activeExchanges
   useEffect(() => {
     const activeSet = new Set(activeExchanges);
 
-    // Open connections for newly active exchanges (skip exchanges without backend)
     for (const exchange of activeExchanges) {
       if (hasBackend(exchange) && !wsMapRef.current[exchange]) {
         connectExchange(exchange);
       }
     }
 
-    // Close connections for exchanges no longer active
     for (const exchange of Object.keys(wsMapRef.current)) {
       if (!activeSet.has(exchange as Exchange)) {
         closeExchange(exchange as Exchange);
@@ -88,9 +113,8 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
         const data: BackendWsMessage = JSON.parse(ev.data as string);
 
         if (data.type === "order_event") {
-          queryClient.invalidateQueries({
-            queryKey: ["orders", exchange, data.pair],
-          });
+          const key = `${exchange}|${data.pair}`;
+          pendingInvalidations.current.set(key, [exchange, data.pair]);
         } else if (data.type === "status") {
           setStatus((prev) => ({
             ...prev,
