@@ -3,11 +3,14 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 from typing import Dict, Set
+import os
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketState
 
 from exchange_services.service_container import ServiceContainer
+
+os.makedirs("logs", exist_ok=True)  
 
 logger = logging.getLogger(__name__)
 
