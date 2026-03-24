@@ -42,10 +42,9 @@ interface Props {
 export function ActiveOrdersProvider({ configuredPairs, children }: Props) {
   const queries = useMemo(() => {
     const result: { exchange: Exchange; pair: string }[] = [];
-    // TODO: uncomment kraken when backend REST is working
-    // for (const pair of configuredPairs.kraken) {
-    //   result.push({ exchange: "kraken", pair });
-    // }
+    for (const pair of configuredPairs.kraken) {
+      result.push({ exchange: "kraken", pair });
+    }
     for (const pair of configuredPairs.okx) {
       result.push({ exchange: "okx", pair });
     }

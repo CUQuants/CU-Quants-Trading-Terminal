@@ -2,7 +2,7 @@ import {
   createExchangeWsContext,
   type ExchangeWsAdapter,
   type ExchangeWsContextValue,
-  type NormalizedUpdate,
+  type NormalizedMessage,
 } from "./createExchangeWsContext";
 import type { OkxBookMessage, OkxRawLevel } from "../types/orderbook";
 import type { OrderbookLevel } from "../types/orderbook";
@@ -41,9 +41,40 @@ const okxAdapter: ExchangeWsAdapter = {
     args: wirePairs.map((instId) => ({ channel: "books", instId })),
   }),
 
-  parseMessage(raw): NormalizedUpdate | null {
+  parseMessage(raw): NormalizedMessage | null {
     const msg = raw as Record<string, unknown>;
-    if ("event" in msg) return null;
+
+    // Control / error frames
+    if ("event" in msg) {
+      const event = msg.event as string | undefined;
+      if (event !== "error") return null;
+
+      const arg = msg.arg as { instId?: string } | undefined;
+      let pair: string | undefined;
+      if (arg?.instId) {
+        try {
+          pair = fromNativePair(arg.instId);
+        } catch {
+          pair = undefined;
+        }
+      }
+
+      const code = (msg.code as string | undefined) ?? undefined;
+      const rawMessage = (msg.msg as string | undefined) ?? "OKX WebSocket error";
+      const message =
+        code != null && code !== ""
+          ? `OKX: ${rawMessage} (code ${code})`
+          : `OKX: ${rawMessage}`;
+
+      return {
+        type: "error",
+        scope: pair ? "pair" : "connection",
+        pair,
+        code,
+        message,
+        raw: msg,
+      };
+    }
 
     const bookMsg = msg as unknown as OkxBookMessage;
     if (!bookMsg.data || !bookMsg.action) return null;

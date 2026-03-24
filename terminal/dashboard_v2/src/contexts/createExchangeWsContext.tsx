@@ -8,6 +8,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
+import toast from "react-hot-toast";
 import type { OrderbookData, OrderbookLevel } from "../types/orderbook";
 
 const DEPTH = 25;
@@ -26,6 +27,8 @@ export interface ExchangeWsContextValue {
   connectionStatus: ConnectionStatus;
   lastUpdated: Date | null;
   orderbook: Record<string, OrderbookData>;
+  /** Map of pair -> last subscription/error message (if any). */
+  pairErrors: Record<string, string>;
   subscribe: (pair: string) => void;
   unsubscribe: (pair: string) => void;
   subscribedPairs: string[];
@@ -41,13 +44,31 @@ export interface NormalizedUpdate {
   checksum?: number;
 }
 
+export type NormalizedErrorScope = "pair" | "connection";
+
+export interface NormalizedError {
+  type: "error";
+  scope: NormalizedErrorScope;
+  /** Normalized pair (e.g. BTC/USD) if error is scoped to a specific instrument. */
+  pair?: string;
+  /** Exchange-specific error code, if provided. */
+  code?: string;
+  /** Human-readable message suitable for display to the user. */
+  message: string;
+  /** Optional raw payload for debugging. */
+  raw?: unknown;
+}
+
+export type NormalizedMessage = NormalizedUpdate | NormalizedError;
+
 export interface ExchangeWsAdapter {
   name: string;
   wsUrl: string;
   toWirePair(pair: string): string;
   buildSubscribeMsg(wirePairs: string[]): unknown;
   buildUnsubscribeMsg(wirePairs: string[]): unknown;
-  parseMessage(raw: unknown): NormalizedUpdate | null;
+  /** Parse a raw WS frame into a normalized update or error. */
+  parseMessage(raw: unknown): NormalizedMessage | null;
 }
 
 function applyLevelUpdate(
@@ -79,6 +100,7 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
       Record<string, OrderbookData>
     >({});
     const [subscribedPairs, setSubscribedPairs] = useState<string[]>([]);
+    const [pairErrors, setPairErrors] = useState<Record<string, string>>({});
 
     const wsRef = useRef<WebSocket | null>(null);
     const booksRef = useRef<Record<string, OrderbookData>>({});
@@ -121,6 +143,24 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
           const parsed = adapter.parseMessage(raw);
           if (!parsed) return;
 
+          if (parsed.type === "error") {
+            // Log full error for debugging.
+            // eslint-disable-next-line no-console
+            console.error(`[${adapter.name} WS error]`, parsed.raw ?? parsed);
+
+            if (parsed.scope === "pair" && parsed.pair) {
+              setPairErrors((prev) => ({
+                ...prev,
+                [parsed.pair as string]: parsed.message,
+              }));
+            } else if (parsed.scope === "connection") {
+              setConnectionStatus("failed");
+            }
+
+            toast.error(parsed.message);
+            return;
+          }
+
           const { pair, instId, type, bids, asks, checksum } = parsed;
           const key =
             instId &&
@@ -130,6 +170,13 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
             );
           const storageKey = (key ?? pair) as string;
           if (!pairsRef.current.has(storageKey)) return;
+
+          // Clear any previous error for this pair once we receive valid data.
+          setPairErrors((prev) => {
+            if (!prev[storageKey]) return prev;
+            const { [storageKey]: _removed, ...rest } = prev;
+            return rest;
+          });
 
           if (type === "snapshot") {
             booksRef.current[storageKey] = {
@@ -255,6 +302,7 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
         connectionStatus,
         lastUpdated,
         orderbook: orderbooks,
+        pairErrors,
         subscribe,
         unsubscribe,
         subscribedPairs,
@@ -263,6 +311,7 @@ export function createExchangeWsContext(adapter: ExchangeWsAdapter) {
         connectionStatus,
         lastUpdated,
         orderbooks,
+        pairErrors,
         subscribe,
         unsubscribe,
         subscribedPairs,
