@@ -63,7 +63,7 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
           <img src={quantsLogo} alt="" className="h-9 w-auto object-contain" />
           <div className="flex flex-col gap-0.5">
             <h1 className="text-lg font-bold tracking-tight text-white leading-tight">
-              Trading Terminal
+              SharkLazer
             </h1>
             <span className="text-xs text-white/50 font-medium">by CU Quants</span>
           </div>
