@@ -20,7 +20,7 @@ const ACTIVE_STATUSES = new Set(["open", "pending", "live"]);
 
 function isActiveLimitOrder(order: Order): boolean {
   return (
-    order.type === "limit" &&
+    (order.type === "limit" || order.type === "iceberg") &&
     order.price != null &&
     ACTIVE_STATUSES.has(order.status)
   );
