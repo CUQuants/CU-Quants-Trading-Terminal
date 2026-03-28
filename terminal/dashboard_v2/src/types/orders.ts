@@ -5,8 +5,9 @@ export interface Order {
   pair: string;
   exchange: Exchange;
   side: "buy" | "sell";
-  type: "limit" | "market";
+  type: "limit" | "market" | "iceberg";
   price?: number;
+  visible_size?: number;
   size: number;
   status: string;
   created_at?: string;
@@ -15,8 +16,9 @@ export interface Order {
 export interface OrderParams {
   pair: string;
   side: "buy" | "sell";
-  type: "limit" | "market";
+  type: "limit" | "market" | "iceberg";
   price?: number;
+  visible_size?: number;
   size: number;
 }
 

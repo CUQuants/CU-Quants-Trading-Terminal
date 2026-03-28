@@ -221,8 +221,17 @@ class KrakenService(ExchangeService):
             "ordertype": request.type,
             "volume": str(request.size),
         }
-        if request.type == "limit" and request.price is not None:
+        if request.type in ("limit", "iceberg") and request.price is not None:
             data["price"] = str(request.price)
+
+        if request.type == "iceberg":
+            if request.visible_size is None:
+                return (None, "visible_size is required for iceberg orders")
+            if request.visible_size > request.size:
+                return (None, "visible_size cannot exceed total size")
+            if request.visible_size < request.size / 15:
+                return (None, "visible_size must be at least 1/15 of total size")
+            data["displayvol"] = str(request.visible_size)
 
         try:
             resp = await self._private_request("/private/AddOrder", data)
@@ -240,6 +249,7 @@ class KrakenService(ExchangeService):
             side=request.side,
             type=request.type,
             price=request.price,
+            visible_size=request.visible_size,
             size=request.size,
             status="live",
         )
@@ -258,13 +268,25 @@ class KrakenService(ExchangeService):
             if pair and item_pair != pair:
                 continue
 
+            raw_ordertype = descr.get("ordertype", "")
+            if raw_ordertype == "iceberg":
+                order_type = "iceberg"
+            elif raw_ordertype in ("market", "stop-loss", "take-profit", "trailing-stop"):
+                order_type = "market"
+            else:
+                order_type = "limit"
+
+            display_vol_str = item.get("display_volume")
+            visible_size = float(display_vol_str) if display_vol_str else None
+
             orders.append(OrderResponse(
                 id=txid,
                 pair=item_pair,
                 exchange="kraken",
                 side=descr.get("type", ""),
-                type="market" if descr.get("ordertype") in ("market", "stop-loss", "take-profit", "trailing-stop") else "limit",
+                type=order_type,
                 price=float(descr["price"]) if descr.get("price") and descr["price"] != "0" else None,
+                visible_size=visible_size,
                 size=float(item.get("vol", 0)),
                 status=item.get("status", "open"),
                 created_at=str(item.get("opentm", "")),
