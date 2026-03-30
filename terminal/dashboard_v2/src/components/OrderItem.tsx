@@ -19,7 +19,13 @@ export function OrderItem({ order, onCancel, isCancelling }: Props) {
         {order.side}
       </span>
 
-      <span className="text-white/60 w-14">{order.type}</span>
+      <span className="text-white/60 w-14">
+        {order.type === "iceberg" ? (
+          <span className="text-cyan-400" title="Iceberg order">iceberg</span>
+        ) : (
+          order.type
+        )}
+      </span>
 
       <span className="font-mono text-white w-24 text-right">
         {order.price != null
@@ -30,8 +36,12 @@ export function OrderItem({ order, onCancel, isCancelling }: Props) {
           : "Market"}
       </span>
 
-      <span className="font-mono text-white/70 w-20 text-right">
-        {order.size}
+      <span className="font-mono text-white/70 w-20 text-right" title={
+        order.visible_size != null
+          ? `Visible: ${order.visible_size} / Total: ${order.size}`
+          : undefined
+      }>
+        {order.visible_size != null ? `${order.visible_size}/${order.size}` : order.size}
       </span>
 
       <span className="text-[10px] uppercase text-white/40 w-20">

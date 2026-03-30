@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Exchange } from "../types/orderbook";
 import { usePlaceOrder } from "../hooks/usePlaceOrder";
 import { useAvailableCash } from "../hooks/useAvailableCash";
@@ -12,10 +12,18 @@ interface Props {
 
 export function OrderPlacementForm({ exchange, pair }: Props) {
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [type, setType] = useState<"limit" | "market">("limit");
+  const [type, setType] = useState<"limit" | "market" | "iceberg">("limit");
   const [price, setPrice] = useState("");
   const [size, setSize] = useState("");
+  const [visibleSize, setVisibleSize] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (type === "iceberg" && exchange !== "kraken") {
+      setType("limit");
+      setVisibleSize("");
+    }
+  }, [exchange, type]);
 
   const mutation = usePlaceOrder(exchange);
   const cashQuery = useAvailableCash(exchange, pair);
@@ -29,10 +37,21 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
       e.size = "Size must be a positive number";
     }
 
-    if (type === "limit") {
+    if (type === "limit" || type === "iceberg") {
       const priceNum = parseFloat(price);
       if (!price || isNaN(priceNum) || priceNum <= 0) {
         e.price = "Price must be a positive number";
+      }
+    }
+
+    if (type === "iceberg") {
+      const visNum = parseFloat(visibleSize);
+      if (!visibleSize || isNaN(visNum) || visNum <= 0) {
+        e.visibleSize = "Display size must be a positive number";
+      } else if (!isNaN(sizeNum) && visNum > sizeNum) {
+        e.visibleSize = "Display size cannot exceed total size";
+      } else if (!isNaN(sizeNum) && visNum < sizeNum / 15) {
+        e.visibleSize = "Display size must be at least 1/15 of total size";
       }
     }
 
@@ -48,7 +67,8 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
       pair,
       side,
       type,
-      price: type === "limit" ? parseFloat(price) : undefined,
+      price: type === "limit" || type === "iceberg" ? parseFloat(price) : undefined,
+      visible_size: type === "iceberg" ? parseFloat(visibleSize) : undefined,
       size: parseFloat(size),
     });
   }
@@ -136,10 +156,23 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
         >
           Market
         </button>
+        {exchange === "kraken" && (
+          <button
+            type="button"
+            onClick={() => setType("iceberg")}
+            className={`flex-1 py-1.5 text-xs rounded border transition-colors cursor-pointer ${
+              type === "iceberg"
+                ? "border-blue-500 text-blue-400 bg-blue-500/10"
+                : "border-white/10 text-white/40 hover:border-white/20"
+            }`}
+          >
+            Iceberg
+          </button>
+        )}
       </div>
 
-      {/* Price (limit only) */}
-      {type === "limit" && (
+      {/* Price (limit & iceberg) */}
+      {(type === "limit" || type === "iceberg") && (
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">
             Price
@@ -154,6 +187,27 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
           />
           {errors.price && (
             <p className="text-red-400 text-xs mt-1">{errors.price}</p>
+          )}
+        </div>
+      )}
+
+      {/* Display size (iceberg only) */}
+      {type === "iceberg" && (
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1">
+            Display Size
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={visibleSize}
+            onChange={(e) => setVisibleSize(e.target.value)}
+            placeholder="Visible quantity in book"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/5 text-white outline-none focus:border-blue-500"
+          />
+          <p className="text-white/30 text-[10px] mt-1">Min 1/15 of total size</p>
+          {errors.visibleSize && (
+            <p className="text-red-400 text-xs mt-1">{errors.visibleSize}</p>
           )}
         </div>
       )}

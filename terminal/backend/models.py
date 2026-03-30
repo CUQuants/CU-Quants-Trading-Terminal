@@ -5,7 +5,8 @@ from typing import Literal, Optional, List
 class PlaceOrderRequest(BaseModel):
     pair: str
     side: Literal["buy", "sell"]
-    type: Literal["limit", "market"]
+    type: Literal["limit", "market", "iceberg"]
+    visible_size: Optional[float] = None
     price: Optional[float] = None
     size: float
 
@@ -15,8 +16,9 @@ class OrderResponse(BaseModel):
     pair: str
     exchange: str
     side: Literal["buy", "sell"]
-    type: Literal["limit", "market"]
+    type: Literal["limit", "market", "iceberg"]
     price: Optional[float] = None
+    visible_size: Optional[float] = None
     size: float
     status: str
     created_at: Optional[str] = None
