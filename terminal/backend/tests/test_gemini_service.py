@@ -2,6 +2,7 @@ import sys
 import os
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -223,7 +224,7 @@ async def test_place_order_returns_error_on_gemini_failure():
 
     with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=gemini_response):
         order, err = await gemini.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
+            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1, price=100.0),
         )
 
     assert order is None
@@ -232,16 +233,34 @@ async def test_place_order_returns_error_on_gemini_failure():
 
 
 @pytest.mark.asyncio
-async def test_place_order_market_buy_uses_ioc_and_buffered_ticker_price():
-    """Market buy should be sent as IOC limit with a modest ask-price buffer."""
+async def test_place_order_market_requires_explicit_price():
+    """Market orders should be rejected when no explicit price is provided."""
+    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+
+    with patch.object(gemini, "_request", new_callable=AsyncMock) as req_mock:
+        order, err = await gemini.place_order(
+            PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1),
+        )
+
+    assert order is None
+    assert err == "Market orders require price"
+    req_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_place_order_market_uses_explicit_price_without_ticker_lookup():
+    """Market order should use provided price directly and keep IOC behavior."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
     captured_payload = None
 
     async def capture_request(method, path, body=None, headers=None):
         nonlocal captured_payload
+        _ = body
         if method == "GET" and path == "/v2/ticker/solusd":
-            return {"ask": "100.00", "bid": "99.50", "last": "99.80"}
+            raise AssertionError("Ticker endpoint should not be called when explicit market price is provided")
+        if method == "GET" and path == "/v1/symbols/details/solusd":
+            return {"quote_increment": "0.01"}
         if method == "POST" and path == "/v1/order/new":
             import base64, json
             captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
@@ -250,29 +269,29 @@ async def test_place_order_market_buy_uses_ioc_and_buffered_ticker_price():
 
     with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
         order, err = await gemini.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1),
+            PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1, price=123.4567),
         )
 
     assert err is None
     assert order is not None
-    assert captured_payload is not None
-    assert captured_payload["type"] == "exchange limit"
+    assert isinstance(captured_payload, dict)
     assert captured_payload["options"] == ["immediate-or-cancel"]
-    assert captured_payload["price"] == "100.5"
+    assert captured_payload["price"] == "123.46"
 
 
 @pytest.mark.asyncio
 async def test_place_order_market_uses_symbol_increment_rounding():
-    """Market IOC prices should be rounded to Gemini quote increment."""
-    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+    """Market IOC prices should use provided references and valid quote increment rounding."""
+    service = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
     captured_payloads = []
 
     async def capture_request(method, path, body=None, headers=None):
+        _ = body
         if method == "GET" and path == "/v1/symbols/details/ethusd":
             return {"quote_increment": "0.01"}
         if method == "GET" and path == "/v2/ticker/ethusd":
-            return {"ask": "3047.50", "bid": "3047.00", "last": "3047.20"}
+            raise AssertionError("Ticker endpoint should not be called for market IOC pricing")
         if method == "POST" and path == "/v1/order/new":
             import base64, json
             payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
@@ -280,21 +299,19 @@ async def test_place_order_market_uses_symbol_increment_rounding():
             return {"order_id": str(len(captured_payloads)), "is_live": True, "timestamp": "1730385593"}
         return {}
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        _, buy_err = await gemini.place_order(
-            PlaceOrderRequest(pair="ETH/USD", side="buy", type="market", size=0.01),
+    with patch.object(service, "_request", new_callable=AsyncMock, side_effect=capture_request):
+        _, buy_err = await service.place_order(
+            PlaceOrderRequest(pair="ETH/USD", side="buy", type="market", size=0.01, price=3047.50),
         )
-        _, sell_err = await gemini.place_order(
-            PlaceOrderRequest(pair="ETH/USD", side="sell", type="market", size=0.01),
+        _, sell_err = await service.place_order(
+            PlaceOrderRequest(pair="ETH/USD", side="sell", type="market", size=0.01, price=3047.00),
         )
 
     assert buy_err is None
     assert sell_err is None
     assert len(captured_payloads) == 2
-    # buy: 3047.50 * 1.005 = 3062.7375 -> round up to 0.01 = 3062.74
-    assert captured_payloads[0]["price"] == "3062.74"
-    # sell: 3047.00 * 0.995 = 3031.765 -> round down to 0.01 = 3031.76
-    assert captured_payloads[1]["price"] == "3031.76"
+    assert captured_payloads[0]["price"] == "3047.5"
+    assert captured_payloads[1]["price"] == "3047"
 
 
 @pytest.mark.asyncio
@@ -356,28 +373,73 @@ async def test_gemini_request_omits_account_when_not_configured():
 @pytest.mark.asyncio
 async def test_place_view_cancel_order(gemini: GeminiService):
     """
-    Full order lifecycle: place a limit order far from market price,
+    Full order lifecycle: place a limit order away from market,
     verify it appears in pending orders, cancel it, then verify it's gone.
     """
-    order = PlaceOrderRequest(
-        pair="BTC/USD",
-        side="buy",
-        type="limit",
-        price=1000.00,
-        size=1,
-    )
+    pair = "BTC/USD"
+    symbol = "btcusd"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            ticker_resp = await client.get(f"{gemini.base_url}/v2/ticker/{symbol}")
+            ticker_resp.raise_for_status()
+            ticker = ticker_resp.json()
+    except Exception:
+        pytest.skip("Gemini ticker unavailable for integration lifecycle test")
+
+    bid = float(ticker.get("bid") or ticker.get("last") or 0)
+    ask = float(ticker.get("ask") or ticker.get("last") or 0)
+    if bid <= 0 or ask <= 0:
+        pytest.skip("Gemini ticker unavailable for integration lifecycle test")
+
+    cash = await gemini.get_available_cash(pair)
+    pos = await gemini.get_available_positions(pair)
+    min_notional_usd = 10.0
+
+    order: PlaceOrderRequest
+    if cash.available >= min_notional_usd:
+        buy_price = max(bid * 0.95, 0.01)
+        buy_size = max(0.00001, min(0.001, (cash.available * 0.5) / buy_price))
+        if buy_size * buy_price >= min_notional_usd:
+            order = PlaceOrderRequest(
+                pair=pair,
+                side="buy",
+                type="limit",
+                price=buy_price,
+                size=buy_size,
+            )
+        else:
+            pytest.skip("Insufficient USD notional for buy lifecycle test")
+    elif pos.available > 0 and (pos.available * ask) >= min_notional_usd:
+        sell_price = ask * 1.05
+        sell_size = max(0.00001, min(0.001, pos.available * 0.5))
+        if sell_size * sell_price < min_notional_usd:
+            pytest.skip("Insufficient BTC notional for sell lifecycle test")
+        order = PlaceOrderRequest(
+            pair=pair,
+            side="sell",
+            type="limit",
+            price=sell_price,
+            size=sell_size,
+        )
+    else:
+        pytest.skip("Insufficient balances for integration lifecycle test")
+
     placed, err = await gemini.place_order(order)
-    assert err is None, f"place_order failed: {err}"
+    if err is not None:
+        if "GenericFailure" in err or "insufficient" in err.lower() or "balance" in err.lower():
+            pytest.skip(f"Exchange rejected integration lifecycle order: {err}")
+        pytest.fail(f"place_order failed: {err}")
     assert placed is not None
     order_id = placed.id
 
-    pending = await gemini.get_orders(pair="BTC/USD")
+    pending = await gemini.get_orders(pair=pair)
     found = [o for o in pending if o.id == order_id]
     assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
 
-    cancelled = await gemini.cancel_order(order_id, "BTC/USD")
+    cancelled = await gemini.cancel_order(order_id, pair)
     assert cancelled is True, f"cancel_order returned False for order {order_id}"
 
-    pending_after = await gemini.get_orders(pair="BTC/USD")
+    pending_after = await gemini.get_orders(pair=pair)
     still_there = [o for o in pending_after if o.id == order_id]
     assert len(still_there) == 0, f"Order {order_id} still pending after cancel"

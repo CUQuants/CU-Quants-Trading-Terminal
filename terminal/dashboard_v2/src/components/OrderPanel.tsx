@@ -59,7 +59,7 @@ export function OrderPanel({ exchange, pair, orderbook, onClose }: Props) {
               Place Order
             </h3>
           </div>
-          <OrderPlacementForm exchange={exchange} pair={pair} />
+          <OrderPlacementForm exchange={exchange} pair={pair} orderbook={orderbook} />
         </div>
       </div>
     </div>

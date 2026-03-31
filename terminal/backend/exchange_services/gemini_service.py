@@ -98,28 +98,12 @@ class GeminiService(ExchangeService):
         headers = self._get_headers(payload)
         return await self._request(method, path, body="", headers=headers)
 
-    # Market orders on Gemini are emulated using aggressive IOC limit orders. 
-    # This method calculates a suitable price for that purpose.
+    # Market orders on Gemini are emulated using aggressive IOC limit orders.
+    # A market reference price must be provided by the caller.
     async def _resolve_market_ioc_price(self, symbol: str, side: str, explicit_price: Optional[float]) -> str:
-        if explicit_price is not None:
-            return await self._normalize_price(symbol, side, explicit_price)
-
-        try:
-            ticker = await self._request("GET", f"/v2/ticker/{symbol}")
-            if side == "buy":
-                ref = float(ticker.get("ask") or ticker.get("last") or ticker.get("bid") or 0)
-            else:
-                ref = float(ticker.get("bid") or ticker.get("last") or ticker.get("ask") or 0)
-        except Exception:
-            ref = 0.0
-
-        if ref > 0:
-            slip = self.market_slippage_bps / 10_000
-            buffered = ref * (1 + slip if side == "buy" else 1 - slip)
-            return await self._normalize_price(symbol, side, buffered)
-
-        # Fallback to permissive limits if ticker lookup fails.
-        return "999999" if side == "buy" else "0.01"
+        if explicit_price is None:
+            raise ValueError("Market orders require price")
+        return await self._normalize_price(symbol, side, explicit_price)
 
     async def _get_quote_increment(self, symbol: str) -> Decimal:
         cached = self._quote_increment_cache.get(symbol)
@@ -223,6 +207,8 @@ class GeminiService(ExchangeService):
         }
 
         if request.type == "market":
+            if request.price is None:
+                return (None, "Market orders require price")
             payload["price"] = await self._resolve_market_ioc_price(symbol, request.side, request.price)
             payload["options"] = ["immediate-or-cancel"]
         else:
