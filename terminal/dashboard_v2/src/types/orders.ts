@@ -44,4 +44,9 @@ export interface StatusEvent {
   connectionStatus: "connected" | "reconnecting" | "disconnected";
 }
 
-export type BackendWsMessage = OrderEvent | StatusEvent;
+export interface PongEvent {
+  type: "pong";
+  id: string;
+}
+
+export type BackendWsMessage = OrderEvent | StatusEvent | PongEvent;
