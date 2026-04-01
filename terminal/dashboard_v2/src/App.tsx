@@ -13,7 +13,7 @@ import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
 
 function App() {
-  const { config, addPair, removePair } = useRowConfig();
+  const { config, pairOptions, addPair, removePair } = useRowConfig();
   const [currentView, setCurrentView] = useState<View>("dashboard");
 
   const activeExchanges = useMemo<Exchange[]>(() => {
@@ -49,6 +49,7 @@ function App() {
               {currentView === "dashboard" && (
                 <Dashboard
                   config={config}
+                  pairOptions={pairOptions}
                   onAddPair={addPair}
                   onRemovePair={removePair}
                 />
