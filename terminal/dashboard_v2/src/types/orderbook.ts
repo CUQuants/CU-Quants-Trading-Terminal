@@ -71,7 +71,6 @@ export const EXCHANGE_SYMBOLS: Record<Exchange, string[]> = {
 /**
  * Exchanges that have a backend relay at localhost:8000
  * (order events WS, REST orders, account endpoints).
- * Gemini currently only provides public market data via its own WS.
  */
 export const BACKEND_EXCHANGES: ReadonlySet<Exchange> = new Set<Exchange>([
   "kraken",
