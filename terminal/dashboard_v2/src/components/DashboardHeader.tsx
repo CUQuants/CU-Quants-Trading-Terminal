@@ -11,6 +11,7 @@ const STATUS_COLORS: Record<string, string> = {
   connecting: "bg-yellow-500 animate-pulse",
   reconnecting: "bg-yellow-500 animate-pulse",
   disconnected: "bg-red-500",
+  dead: "bg-red-500 shadow-[0_0_6px_theme(colors.red.500)]",
   failed: "bg-red-500",
   idle: "bg-white/20",
 };
