@@ -35,7 +35,7 @@ These decisions were made explicitly during planning:
 - **Frontend receives a signal, then refetches**: The order event from the backend specifies the affected exchange + normalized pair. The frontend does NOT use the event payload to update local state directly. Instead, it invalidates the React Query cache for that pair, which triggers a REST refetch. This keeps REST as the single source of truth for order state.
 - **Batched event processing on frontend**: Order events are accumulated in a ref. Every 500ms, the ref is read, React Query is invalidated for all affected pairs, and the ref is cleared. This prevents rapid-fire refetches from burst events (e.g., multiple partial fills in quick succession).
 - **Graceful degradation on pair add**: When a user adds a new ticker/exchange pair, the orderbook WS subscription and the initial order fetch happen independently. If one fails, the other still proceeds. The UI shows the row with whichever data is available and surfaces an inline error for the failed piece. This is preferred over atomic all-or-nothing semantics.
-- **Status events alongside order events**: The backend→frontend WS protocol carries two message types: order events and connection status changes. If the backend's private WS to the exchange drops, the frontend is notified and can show a stale-feed warning.
+- **Status events alongside order events**: The backend→frontend WS protocol carries order events, connection status changes, and application-level ping/pong heartbeats. If the backend's private WS to the exchange drops, the frontend is notified and can show a stale-feed warning. The frontend may send `{ "type": "ping", "id": "<opaque>" }`; the backend replies with `{ "type": "pong", "id": "<same id>" }` so the client can detect a dead connection.
 - **React Query cache keyed per-pair**: Query key structure is `["orders", exchange, pair]` (e.g., `["orders", "okx", "BTC/USD"]`). This allows granular invalidation — only the affected pair refetches. If the `OrderPanel` for that pair isn't mounted, React Query skips the refetch entirely (no active observers).
 
 ---
@@ -93,7 +93,7 @@ A new class that lives in the `ServiceContainer` (or alongside it). Responsibili
 
 ### 3. Normalized Event Schema (Backend → Frontend)
 
-Two message types:
+Three message shapes from backend to frontend (plus ping/pong for liveness):
 
 ```python
 # Order event — sent when the exchange reports an order state change
@@ -114,6 +114,12 @@ Two message types:
     "type": "status",
     "exchange": "okx",
     "connectionStatus": "connected"  # "connected" | "reconnecting" | "disconnected"
+}
+
+# Pong event — reply to a client-issued ping (same id echoed)
+{
+    "type": "pong",
+    "id": "opaque-correlation-id"
 }
 ```
 
@@ -211,7 +217,12 @@ export interface StatusEvent {
   connectionStatus: "connected" | "reconnecting" | "disconnected";
 }
 
-export type BackendWsMessage = OrderEvent | StatusEvent;
+export interface PongEvent {
+  type: "pong";
+  id: string;
+}
+
+export type BackendWsMessage = OrderEvent | StatusEvent | PongEvent;
 ```
 
 ### 3. React Query Setup
@@ -242,6 +253,7 @@ A React context provider that:
 - For each active exchange, opens a WebSocket to the FastAPI backend at `ws://<backend>/orders/{exchange}`
 - On incoming `order_event` messages: pushes the affected pair into a ref (`Map<Exchange, Set<string>>`)
 - On incoming `status` messages: updates a connection status state map
+- On incoming `pong` messages: clears the pending heartbeat timeout for that exchange (client periodically sends `ping` with an `id`; backend echoes `pong` with the same `id`)
 - Every 500ms, reads the event ref, calls `queryClient.invalidateQueries({ queryKey: ["orders", exchange, pair] })` for each accumulated pair, clears the ref
 - When an exchange is removed from the active set (user removed all pairs for it): closes that WS connection
 - Exposes via context:

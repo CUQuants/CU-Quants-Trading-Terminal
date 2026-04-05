@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import List
 
@@ -24,7 +25,20 @@ async def order_events_ws(websocket: WebSocket, exchange: str):
     try:
         await relay.register_client(exchange, websocket)
         while True:
-            await websocket.receive_text()
+            raw_message = await websocket.receive_text()
+            try:
+                message = json.loads(raw_message)
+            except json.JSONDecodeError:
+                continue
+
+            if (
+                isinstance(message, dict)
+                and message.get("type") == "ping"
+                and isinstance(message.get("id"), str)
+            ):
+                await websocket.send_text(
+                    json.dumps({"type": "pong", "id": message["id"]})
+                )
     except WebSocketDisconnect:
         pass
     finally:

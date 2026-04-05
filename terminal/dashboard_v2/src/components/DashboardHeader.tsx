@@ -1,5 +1,6 @@
 import { useOkxWs } from "../contexts/OkxWsContext";
 import { useKrakenWs } from "../contexts/KrakenWsContext";
+import { useGeminiWs } from "../contexts/GeminiWsContext";
 import { useOrderEvents } from "../contexts/OrderEventsContext";
 import quantsLogo from "../assets/quants_dark.png";
 
@@ -10,6 +11,7 @@ const STATUS_COLORS: Record<string, string> = {
   connecting: "bg-yellow-500 animate-pulse",
   reconnecting: "bg-yellow-500 animate-pulse",
   disconnected: "bg-red-500",
+  dead: "bg-red-500 shadow-[0_0_6px_theme(colors.red.500)]",
   failed: "bg-red-500",
   idle: "bg-white/20",
 };
@@ -54,6 +56,7 @@ interface HeaderProps {
 export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
   const okxWs = useOkxWs();
   const krakenWs = useKrakenWs();
+  const geminiWs = useGeminiWs();
   const { orderEventsStatus } = useOrderEvents();
 
   return (
@@ -95,6 +98,7 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
           </span>
           <StatusDot status={krakenWs.connectionStatus} label="Kraken" />
           <StatusDot status={okxWs.connectionStatus} label="OKX" />
+          <StatusDot status={geminiWs.connectionStatus} label="Gemini" />
         </div>
 
         <div className="flex items-center gap-3 bg-white/[0.03] rounded-lg px-3 py-1.5 border border-white/5">
@@ -103,6 +107,7 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
           </span>
           <StatusDot status={orderEventsStatus.kraken} label="Kraken" />
           <StatusDot status={orderEventsStatus.okx} label="OKX" />
+          <StatusDot status={orderEventsStatus.gemini} label="Gemini" />
         </div>
       </div>
     </header>

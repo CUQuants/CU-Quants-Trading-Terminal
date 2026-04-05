@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import type { Exchange } from "../types/orderbook";
 import { hasBackend } from "../types/orderbook";
 import type { BackendWsMessage, Order, OrderEvent } from "../types/orders";
@@ -16,10 +17,18 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 2000, 4000];
+const HEARTBEAT_CHECK_MS = 500;
+const ORDER_EVENT_SILENCE_MS = 3000;
+const PONG_TIMEOUT_MS = 2000;
 
 const TERMINAL_STATUSES = new Set(["filled", "canceled"]);
 
-type EventsStatus = "connected" | "reconnecting" | "disconnected" | "idle";
+type EventsStatus =
+  | "connected"
+  | "reconnecting"
+  | "disconnected"
+  | "idle"
+  | "dead";
 
 export interface OrderEventsContextValue {
   orderEventsStatus: Record<Exchange, EventsStatus>;
@@ -78,6 +87,14 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   const wsMapRef = useRef<Record<string, WebSocket>>({});
   const retriesMapRef = useRef<Record<string, number>>({});
   const reconnectTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const heartbeatIntervals = useRef<Record<string, ReturnType<typeof setInterval>>>(
+    {},
+  );
+  const pongTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingPingIds = useRef<Record<string, string | undefined>>({});
+  const lastOrderEventAtRef = useRef<Record<string, number>>({});
+  const lastPingAtRef = useRef<Record<string, number>>({});
+  const deadNotificationShown = useRef<Record<string, boolean>>({});
   const closingRef = useRef<Set<string>>(new Set());
 
   // Connect / disconnect based on activeExchanges
@@ -112,11 +129,16 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
     const url = `${WS_BASE}/orders/${exchange}`;
     const ws = new WebSocket(url);
     wsMapRef.current[exchange] = ws;
+    clearHeartbeat(exchange);
+    lastOrderEventAtRef.current[exchange] = Date.now();
+    lastPingAtRef.current[exchange] = 0;
+    deadNotificationShown.current[exchange] = false;
 
     ws.onopen = () => {
       const wasReconnect = (retriesMapRef.current[exchange] ?? 0) > 0;
       retriesMapRef.current[exchange] = 0;
       setStatus((prev) => ({ ...prev, [exchange]: "connected" }));
+      startHeartbeat(exchange, ws);
 
       if (wasReconnect) {
         queryClient.invalidateQueries({
@@ -130,6 +152,7 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
         const data: BackendWsMessage = JSON.parse(ev.data as string);
 
         if (data.type === "order_event") {
+          lastOrderEventAtRef.current[exchange] = Date.now();
           queryClient.setQueryData<Order[]>(
             ["orders", exchange, data.pair],
             (prev) => applyOrderEvent(prev, data),
@@ -139,6 +162,19 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
             ...prev,
             [exchange]: data.connectionStatus,
           }));
+        } else if (
+          data.type === "pong" &&
+          data.id === pendingPingIds.current[exchange]
+        ) {
+          clearPongTimeout(exchange);
+          pendingPingIds.current[exchange] = undefined;
+          deadNotificationShown.current[exchange] = false;
+          setStatus((prev) => {
+            if (prev[exchange] !== "dead") {
+              return prev;
+            }
+            return { ...prev, [exchange]: "connected" };
+          });
         }
       } catch {
         /* ignore malformed */
@@ -148,11 +184,19 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
     ws.onerror = () => {};
 
     ws.onclose = () => {
+      clearHeartbeat(exchange);
       delete wsMapRef.current[exchange];
 
       if (closingRef.current.has(exchange)) {
         closingRef.current.delete(exchange);
         return;
+      }
+
+      if (!deadNotificationShown.current[exchange]) {
+        deadNotificationShown.current[exchange] = true;
+        toast.error(
+          `${exchange.toUpperCase()} order events connection closed unexpectedly.`,
+        );
       }
 
       const retries = (retriesMapRef.current[exchange] ?? 0) + 1;
@@ -163,13 +207,80 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
         return;
       }
 
-      setStatus((prev) => ({ ...prev, [exchange]: "reconnecting" }));
+      setStatus((prev) => ({ ...prev, [exchange]: "dead" }));
       const delay = BACKOFF_MS[Math.min(retries - 1, BACKOFF_MS.length - 1)];
       reconnectTimers.current[exchange] = setTimeout(
-        () => connectExchange(exchange),
+        () => {
+          setStatus((prev) => ({ ...prev, [exchange]: "reconnecting" }));
+          connectExchange(exchange);
+        },
         delay,
       );
     };
+  }
+
+  function startHeartbeat(exchange: Exchange, ws: WebSocket) {
+    heartbeatIntervals.current[exchange] = setInterval(() => {
+      if (
+        ws.readyState !== WebSocket.OPEN ||
+        pendingPingIds.current[exchange] !== undefined
+      ) {
+        return;
+      }
+
+      const lastOrderEventAt = lastOrderEventAtRef.current[exchange] ?? 0;
+      const now = Date.now();
+
+      if (now - lastOrderEventAt < ORDER_EVENT_SILENCE_MS) {
+        return;
+      }
+
+      if (now - (lastPingAtRef.current[exchange] ?? 0) < ORDER_EVENT_SILENCE_MS) {
+        return;
+      }
+
+      const pingId = `${exchange}-${now}`;
+      lastPingAtRef.current[exchange] = now;
+      pendingPingIds.current[exchange] = pingId;
+
+      try {
+        ws.send(JSON.stringify({ type: "ping", id: pingId }));
+      } catch {
+        pendingPingIds.current[exchange] = undefined;
+        return;
+      }
+
+      pongTimeouts.current[exchange] = setTimeout(() => {
+        if (pendingPingIds.current[exchange] !== pingId) {
+          return;
+        }
+
+        pendingPingIds.current[exchange] = undefined;
+        setStatus((prev) => ({ ...prev, [exchange]: "dead" }));
+
+        if (!deadNotificationShown.current[exchange]) {
+          deadNotificationShown.current[exchange] = true;
+          toast.error(`${exchange.toUpperCase()} order events connection is dead.`);
+        }
+      }, PONG_TIMEOUT_MS);
+    }, HEARTBEAT_CHECK_MS);
+  }
+
+  function clearPongTimeout(exchange: Exchange) {
+    if (pongTimeouts.current[exchange]) {
+      clearTimeout(pongTimeouts.current[exchange]);
+      delete pongTimeouts.current[exchange];
+    }
+  }
+
+  function clearHeartbeat(exchange: Exchange) {
+    if (heartbeatIntervals.current[exchange]) {
+      clearInterval(heartbeatIntervals.current[exchange]);
+      delete heartbeatIntervals.current[exchange];
+    }
+
+    clearPongTimeout(exchange);
+    pendingPingIds.current[exchange] = undefined;
   }
 
   function closeExchange(exchange: Exchange) {
@@ -177,9 +288,13 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
       clearTimeout(reconnectTimers.current[exchange]);
       delete reconnectTimers.current[exchange];
     }
+    clearHeartbeat(exchange);
     closingRef.current.add(exchange);
     wsMapRef.current[exchange]?.close();
     delete wsMapRef.current[exchange];
+    delete lastOrderEventAtRef.current[exchange];
+    delete lastPingAtRef.current[exchange];
+    delete deadNotificationShown.current[exchange];
     retriesMapRef.current[exchange] = 0;
     setStatus((prev) => ({ ...prev, [exchange]: "idle" }));
   }
