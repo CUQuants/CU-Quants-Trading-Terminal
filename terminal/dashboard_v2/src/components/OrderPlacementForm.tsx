@@ -4,13 +4,15 @@ import { usePlaceOrder } from "../hooks/usePlaceOrder";
 import { useAvailableCash } from "../hooks/useAvailableCash";
 import { useAvailablePositions } from "../hooks/useAvailablePositions";
 import { formatNum } from "../utils/format";
+import type { OrderbookData } from "../types/orderbook";
 
 interface Props {
   exchange: Exchange;
   pair: string;
+  orderbook?: OrderbookData;
 }
 
-export function OrderPlacementForm({ exchange, pair }: Props) {
+export function OrderPlacementForm({ exchange, pair, orderbook }: Props) {
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [type, setType] = useState<"limit" | "market" | "iceberg">("limit");
   const [price, setPrice] = useState("");
@@ -28,6 +30,9 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
   const mutation = usePlaceOrder(exchange);
   const cashQuery = useAvailableCash(exchange, pair);
   const positionsQuery = useAvailablePositions(exchange, pair);
+  const bestBid = orderbook?.bids?.[0]?.price;
+  const bestAsk = orderbook?.asks?.[0]?.price;
+  const marketReferencePrice = side === "buy" ? bestAsk : bestBid;
 
   function validate(): boolean {
     const e: Record<string, string> = {};
@@ -55,6 +60,12 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
       }
     }
 
+    if (type === "market" && exchange === "gemini") {
+      if (marketReferencePrice == null || !Number.isFinite(marketReferencePrice) || marketReferencePrice <= 0) {
+        e.market = "Waiting for live orderbook price for market order";
+      }
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -67,7 +78,12 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
       pair,
       side,
       type,
-      price: type === "limit" || type === "iceberg" ? parseFloat(price) : undefined,
+      price:
+        type === "limit" || type === "iceberg"
+          ? parseFloat(price)
+          : type === "market" && exchange === "gemini"
+            ? marketReferencePrice
+            : undefined,
       visible_size: type === "iceberg" ? parseFloat(visibleSize) : undefined,
       size: parseFloat(size),
     });
@@ -227,6 +243,14 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
         />
         {errors.size && (
           <p className="text-red-400 text-xs mt-1">{errors.size}</p>
+        )}
+        {type === "market" && exchange === "gemini" && marketReferencePrice != null && Number.isFinite(marketReferencePrice) && (
+          <p className="text-white/40 text-[10px] mt-1">
+            Using live {side === "buy" ? "ask" : "bid"}: {formatNum(marketReferencePrice, 6)}
+          </p>
+        )}
+        {errors.market && (
+          <p className="text-red-400 text-xs mt-1">{errors.market}</p>
         )}
       </div>
 
