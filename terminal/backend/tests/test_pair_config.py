@@ -13,8 +13,8 @@ def test_get_exchange_pairs_returns_expected_defaults():
     pairs = get_exchange_pairs()
 
     assert pairs == DEFAULT_EXCHANGE_PAIRS
-    assert set(pairs.keys()) == {"kraken", "okx", "gemini"}
-    assert "BTC/USD" in pairs["kraken"]
+    assert set(pairs.keys()) == {"kraken", "okx"}
+    assert "USDG/USD" in pairs["kraken"]
 
 
 def test_get_exchange_pairs_returns_defensive_copy():
