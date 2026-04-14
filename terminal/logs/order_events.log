@@ -57,3 +57,8 @@
 2026-04-02 23:34:03,254 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "USDD/USD", "orderId": "ON7JJS-Q5F25-WNABJY", "status": "live", "side": "", "price": 1.0012, "size": 37.25365, "timestamp": "2026-04-02T23:34:03.305996Z"}
 2026-04-02 23:34:04,622 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "USDD/USD", "orderId": "ON7JJS-Q5F25-WNABJY", "status": "live", "side": "", "price": 1.0011, "size": 37.25365, "timestamp": "2026-04-02T23:34:04.615587Z"}
 2026-04-02 23:34:04,852 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "USDD/USD", "orderId": "ON7JJS-Q5F25-WNABJY", "status": "live", "side": "", "price": 1.0012, "size": 37.25365, "timestamp": "2026-04-02T23:34:04.902940Z"}
+2026-04-14 22:54:17,013 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-04-14 22:54:36,532 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3479758224232861696", "status": "live", "side": "buy", "price": 0.0, "size": 1.0, "timestamp": "1776207276429"}
+2026-04-14 22:54:36,533 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3479758224232861696", "status": "partially_filled", "side": "buy", "price": 2315.52, "size": 1.0, "timestamp": "1776207276431"}
+2026-04-14 22:54:36,534 [okx] {"type": "order_event", "exchange": "okx", "pair": "ETH/USD", "orderId": "3479758224232861696", "status": "filled", "side": "buy", "price": 0.0, "size": 1.0, "timestamp": "1776207276432"}
+2026-04-14 22:59:09,204 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}

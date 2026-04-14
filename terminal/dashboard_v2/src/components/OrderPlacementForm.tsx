@@ -5,6 +5,7 @@ import { useAvailableCash } from "../hooks/useAvailableCash";
 import { useAvailablePositions } from "../hooks/useAvailablePositions";
 import { formatNum } from "../utils/format";
 import type { OrderbookData } from "../types/orderbook";
+import type { OrderParams } from "../types/orders";
 
 interface Props {
   exchange: Exchange;
@@ -19,6 +20,8 @@ export function OrderPlacementForm({ exchange, pair, orderbook }: Props) {
   const [size, setSize] = useState("");
   const [visibleSize, setVisibleSize] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [step, setStep] = useState<"form" | "confirm">("form");
+  const [pendingOrder, setPendingOrder] = useState<OrderParams | null>(null);
 
   useEffect(() => {
     if (type === "iceberg" && exchange !== "kraken") {
@@ -26,6 +29,11 @@ export function OrderPlacementForm({ exchange, pair, orderbook }: Props) {
       setVisibleSize("");
     }
   }, [exchange, type]);
+
+  useEffect(() => {
+    setStep("form");
+    setPendingOrder(null);
+  }, [exchange, pair]);
 
   const mutation = usePlaceOrder(exchange);
   const cashQuery = useAvailableCash(exchange, pair);
@@ -74,7 +82,7 @@ export function OrderPlacementForm({ exchange, pair, orderbook }: Props) {
     ev.preventDefault();
     if (!validate()) return;
 
-    mutation.mutate({
+    const nextOrder: OrderParams = {
       pair,
       side,
       type,
@@ -86,7 +94,114 @@ export function OrderPlacementForm({ exchange, pair, orderbook }: Props) {
             : undefined,
       visible_size: type === "iceberg" ? parseFloat(visibleSize) : undefined,
       size: parseFloat(size),
-    });
+    };
+
+    setPendingOrder(nextOrder);
+    setStep("confirm");
+  }
+
+  function handleConfirm() {
+    if (!pendingOrder) return;
+    mutation.mutate(pendingOrder);
+  }
+
+  function handleBackToEdit() {
+    setStep("form");
+  }
+
+  useEffect(() => {
+    if (!mutation.isSuccess) return;
+    setStep("form");
+    setPendingOrder(null);
+  }, [mutation.isSuccess]);
+
+  const estimatedNotional =
+    pendingOrder && pendingOrder.price != null
+      ? pendingOrder.price * pendingOrder.size
+      : null;
+
+  const confirmTypeLabel =
+    pendingOrder?.type === "iceberg"
+      ? "Iceberg"
+      : pendingOrder?.type === "market"
+        ? "Market"
+        : "Limit";
+
+  if (step === "confirm" && pendingOrder) {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-blue-300/80">Review Order</p>
+          <p className="text-white/80 text-sm mt-1">Confirm details before submission.</p>
+        </div>
+
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Exchange</span>
+            <span className="text-white font-medium uppercase">{exchange}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Pair</span>
+            <span className="text-white font-medium">{pendingOrder.pair}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Side</span>
+            <span className={`font-semibold uppercase ${pendingOrder.side === "buy" ? "text-green-400" : "text-red-400"}`}>
+              {pendingOrder.side}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Type</span>
+            <span className="text-white">{confirmTypeLabel}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Size</span>
+            <span className="text-white">{formatNum(pendingOrder.size, 6)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Price</span>
+            <span className="text-white">
+              {pendingOrder.price != null ? formatNum(pendingOrder.price, 6) : "Market"}
+            </span>
+          </div>
+          {pendingOrder.type === "iceberg" && pendingOrder.visible_size != null && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-white/50">Display Size</span>
+              <span className="text-white">{formatNum(pendingOrder.visible_size, 6)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between text-sm border-t border-white/10 pt-2 mt-2">
+            <span className="text-white/50">Estimated Notional</span>
+            <span className="text-white">
+              {estimatedNotional != null ? formatNum(estimatedNotional, 2) : "N/A"}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleBackToEdit}
+            disabled={mutation.isPending}
+            className="w-full py-2.5 text-sm font-semibold rounded-lg border border-white/15 text-white/80 hover:text-white hover:border-white/30 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Back to Edit
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={mutation.isPending}
+            className={`w-full py-2.5 text-sm font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 ${
+              pendingOrder.side === "buy"
+                ? "bg-green-600 hover:bg-green-500 text-white"
+                : "bg-red-600 hover:bg-red-500 text-white"
+            }`}
+          >
+            {mutation.isPending ? "Submitting..." : "Confirm & Submit"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const isBuy = side === "buy";
@@ -266,7 +381,7 @@ export function OrderPlacementForm({ exchange, pair, orderbook }: Props) {
       >
         {mutation.isPending
           ? "Submitting..."
-          : `${side === "buy" ? "Buy" : "Sell"} ${pair}`}
+          : `Review ${side === "buy" ? "Buy" : "Sell"} ${pair}`}
       </button>
     </form>
   );
