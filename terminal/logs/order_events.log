@@ -57,3 +57,6 @@
 2026-04-02 23:34:03,254 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "USDD/USD", "orderId": "ON7JJS-Q5F25-WNABJY", "status": "live", "side": "", "price": 1.0012, "size": 37.25365, "timestamp": "2026-04-02T23:34:03.305996Z"}
 2026-04-02 23:34:04,622 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "USDD/USD", "orderId": "ON7JJS-Q5F25-WNABJY", "status": "live", "side": "", "price": 1.0011, "size": 37.25365, "timestamp": "2026-04-02T23:34:04.615587Z"}
 2026-04-02 23:34:04,852 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "USDD/USD", "orderId": "ON7JJS-Q5F25-WNABJY", "status": "live", "side": "", "price": 1.0012, "size": 37.25365, "timestamp": "2026-04-02T23:34:04.902940Z"}
+2026-05-20 20:07:46,051 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-05-20 20:08:23,945 [okx] {"type": "order_event", "exchange": "okx", "pair": "USDC/USD", "orderId": "3583791306574974976", "status": "live", "side": "buy", "price": 1.0005, "size": 1.0, "timestamp": "1779307703888"}
+2026-05-20 20:09:49,583 [okx] {"type": "order_event", "exchange": "okx", "pair": "USDC/USD", "orderId": "3583791306574974976", "status": "filled", "side": "buy", "price": 1.0005, "size": 1.0, "timestamp": "1779307789412"}
