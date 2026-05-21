@@ -3,7 +3,7 @@
 
 DEFAULT_EXCHANGE_PAIRS: dict[str, list[str]] = {
     "kraken": ["USDG/USD", "USDR/EUR", "USDD/EUR", "EURR/USD", "USDQ/EUR", "PYUSD/EUR", "EURR/USDT", "EURR/USDC"],
-    "okx": ["PYUSD/USDT", "USDG/USDT", "USDC/USDT", "DAI/USDT", "PAXG/USDT"]
+    "okx": ["PYUSD/USDT", "USDG/USDT", "USDC/USDT", "PAXG/USDT"]
 }
 
 

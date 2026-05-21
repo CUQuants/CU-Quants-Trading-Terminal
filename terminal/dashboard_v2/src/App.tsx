@@ -11,6 +11,7 @@ import { DashboardHeader, type View } from "./components/DashboardHeader";
 import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
+import { Footer } from "./components/Footer";
 
 function App() {
   const { config, pairOptions, addPair, removePair } = useRowConfig();
@@ -46,20 +47,23 @@ function App() {
                 currentView={currentView}
                 onViewChange={setCurrentView}
               />
-              {currentView === "dashboard" && (
-                <Dashboard
-                  config={config}
-                  pairOptions={pairOptions}
-                  onAddPair={addPair}
-                  onRemovePair={removePair}
-                />
-              )}
-              {currentView === "trades" && (
-                <TradesView activeExchanges={activeExchanges} />
-              )}
-              {currentView === "account" && (
-                <AccountView activeExchanges={activeExchanges} />
-              )}
+              <div className="flex-1 flex flex-col">
+                {currentView === "dashboard" && (
+                  <Dashboard
+                    config={config}
+                    pairOptions={pairOptions}
+                    onAddPair={addPair}
+                    onRemovePair={removePair}
+                  />
+                )}
+                {currentView === "trades" && (
+                  <TradesView activeExchanges={activeExchanges} />
+                )}
+                {currentView === "account" && (
+                  <AccountView activeExchanges={activeExchanges} />
+                )}
+              </div>
+              <Footer />
             </div>
           </ActiveOrdersProvider>
           </GeminiWsProvider>

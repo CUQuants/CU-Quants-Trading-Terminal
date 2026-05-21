@@ -60,3 +60,14 @@
 2026-05-20 20:07:46,051 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
 2026-05-20 20:08:23,945 [okx] {"type": "order_event", "exchange": "okx", "pair": "USDC/USD", "orderId": "3583791306574974976", "status": "live", "side": "buy", "price": 1.0005, "size": 1.0, "timestamp": "1779307703888"}
 2026-05-20 20:09:49,583 [okx] {"type": "order_event", "exchange": "okx", "pair": "USDC/USD", "orderId": "3583791306574974976", "status": "filled", "side": "buy", "price": 1.0005, "size": 1.0, "timestamp": "1779307789412"}
+2026-05-21 19:54:22,750 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-05-21 19:54:24,216 [kraken] {"type": "status", "exchange": "kraken", "connectionStatus": "connected"}
+2026-05-21 19:54:29,906 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-05-21 19:54:31,665 [kraken] {"type": "status", "exchange": "kraken", "connectionStatus": "connected"}
+2026-05-21 19:57:39,192 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-05-21 19:57:39,580 [kraken] {"type": "status", "exchange": "kraken", "connectionStatus": "connected"}
+2026-05-21 19:59:12,369 [kraken] {"type": "order_event", "exchange": "kraken", "pair": "EURR/USD", "orderId": "OF7VPU-4QEWL-G4NROY", "status": "live", "side": "", "price": 0.0, "size": 0.0, "timestamp": "2026-05-21T19:59:12.304222Z"}
+2026-05-21 19:59:45,492 [okx] {"type": "order_event", "exchange": "okx", "pair": "USDC/USD", "orderId": "3586673003574382592", "status": "live", "side": "buy", "price": 1.0003, "size": 1.0, "timestamp": "1779393585151"}
+2026-05-21 19:59:56,542 [okx] {"type": "order_event", "exchange": "okx", "pair": "USDC/USD", "orderId": "3586673003574382592", "status": "canceled", "side": "buy", "price": 1.0003, "size": 1.0, "timestamp": "1779393596094"}
+2026-05-21 20:02:18,179 [okx] {"type": "status", "exchange": "okx", "connectionStatus": "connected"}
+2026-05-21 20:02:19,596 [kraken] {"type": "status", "exchange": "kraken", "connectionStatus": "connected"}
