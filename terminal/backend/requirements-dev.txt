@@ -1,0 +1,9 @@
+# Test-only dependencies. Install alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+# respx is used (or about to be used) for mocking httpx at the HTTP layer
+# rather than monkey-patching the service's _request method.
+respx>=0.21.0

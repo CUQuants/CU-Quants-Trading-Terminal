@@ -1,25 +1,26 @@
-import sys
+"""OKX service unit tests.
+
+These tests mock at the HTTP layer with ``respx`` (intercepts ``httpx``
+calls) rather than patching the service's private ``_request`` method.
+This lets us assert on the actual URL, method, query string, and
+headers the service emits — which catches bugs in URL construction,
+auth signing, and request routing that ``patch.object(_, "_request",
+...)`` cannot detect.
+"""
+
 import os
-from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from exchange_services.okx_service import OkxService
 from models import PlaceOrderRequest, TradeResponse
 
 
-@pytest.fixture
-def okx():
-    return OkxService(base_url="https://us.okx.com", simulated=True)
+OKX_BASE_URL = "https://us.okx.com"
 
 
-# ---------------------------------------------------------------------------
-# get_trades (fills-history) - mocked unit test
-# ---------------------------------------------------------------------------
-
-# Sample OKX fills-history response (matches /api/v5/trade/fills-history format)
+# Sample OKX fills-history response (matches /api/v5/trade/fills-history format).
 OKX_FILLS_RESPONSE = {
     "code": "0",
     "msg": "",
@@ -56,30 +57,25 @@ OKX_FILLS_RESPONSE = {
 }
 
 
+# ---------------------------------------------------------------------------
+# get_trades (fills-history)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_get_trades_parses_fills_history_correctly():
-    """
-    Unit test: OkxService.get_trades correctly parses OKX fills-history API response
-    into TradeResponse objects with proper normalization.
+async def test_get_trades_parses_fills_history_correctly(respx_mock):
+    """OkxService.get_trades parses fills-history into TradeResponse list."""
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
 
-    Success metrics:
-    - No exception raised
-    - Returns list of TradeResponse
-    - Pair normalization: BTC-USDT -> BTC/USD, SOL-USDT -> SOL/USD
-    - Role mapping: execType M -> maker, T -> taker
-    - Fee: abs() applied (negative fee becomes positive)
-    - All required fields present and correctly typed
-    - Limit param respected (at most N items)
-    """
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    respx_mock.get(f"{OKX_BASE_URL}/api/v5/trade/fills-history").mock(
+        return_value=httpx.Response(200, json=OKX_FILLS_RESPONSE),
+    )
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=OKX_FILLS_RESPONSE):
-        trades = await okx.get_trades(limit=10)
+    trades = await okx.get_trades(limit=10)
 
     assert isinstance(trades, list)
     assert len(trades) == 2
 
-    # First trade: SOL-USDT, maker, negative fee
     t0 = trades[0]
     assert isinstance(t0, TradeResponse)
     assert t0.id == "123456789"
@@ -89,12 +85,11 @@ async def test_get_trades_parses_fills_history_correctly():
     assert t0.side == "buy"
     assert t0.price == 82.01
     assert t0.size == 1.0
-    assert t0.fee == 0.002  # abs() applied
+    assert t0.fee == 0.002
     assert t0.fee_currency == "SOL"
     assert t0.role == "maker"
     assert t0.timestamp == "1730385593000"
 
-    # Second trade: BTC-USDT, taker
     t1 = trades[1]
     assert t1.pair == "BTC/USD"
     assert t1.side == "sell"
@@ -103,28 +98,57 @@ async def test_get_trades_parses_fills_history_correctly():
 
 
 @pytest.mark.asyncio
-async def test_get_trades_pair_filter_and_limit():
-    """get_trades with pair filter requests correct instId; limit caps results."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+async def test_get_trades_pair_filter_and_limit(respx_mock):
+    """get_trades with pair filter requests correct instId; limit caps results.
 
-    captured_path = None
+    With respx we can inspect the actual outbound URL — query string,
+    auth headers, and simulated-trading flag — not just whether some
+    substring made it into a captured argument.
+    """
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_path
-        captured_path = path
-        return {"code": "0", "data": OKX_FILLS_RESPONSE["data"][:1]}
+    route = respx_mock.get(f"{OKX_BASE_URL}/api/v5/trade/fills-history").mock(
+        return_value=httpx.Response(200, json={"code": "0", "data": OKX_FILLS_RESPONSE["data"][:1]}),
+    )
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        await okx.get_trades(pair="ETH/USD", limit=5)
+    await okx.get_trades(pair="ETH/USD", limit=5)
 
-    assert "instId=ETH-USDT" in captured_path
-    assert "limit=5" in captured_path
+    assert route.called
+    req = route.calls.last.request
+    assert req.method == "GET"
+    query = req.url.query.decode()
+    assert "instId=ETH-USDT" in query
+    assert "limit=5" in query
+    assert "instType=SPOT" in query
+    # Signing / auth headers must be present.
+    assert req.headers.get("OK-ACCESS-KEY") is not None
+    assert req.headers.get("OK-ACCESS-SIGN")
+    assert req.headers.get("OK-ACCESS-PASSPHRASE") is not None
+    assert req.headers.get("x-simulated-trading") == "1"
 
 
 @pytest.mark.asyncio
-async def test_get_available_cash_parses_balance():
+async def test_get_trades_empty_response(respx_mock):
+    """get_trades handles empty data array without error."""
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
+
+    respx_mock.get(f"{OKX_BASE_URL}/api/v5/trade/fills-history").mock(
+        return_value=httpx.Response(200, json={"code": "0", "data": []}),
+    )
+
+    trades = await okx.get_trades()
+    assert trades == []
+
+
+# ---------------------------------------------------------------------------
+# Account balance endpoints
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_available_cash_parses_balance(respx_mock):
     """get_available_cash returns quote currency (USDT->USD) balance."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
     balance_response = {
         "code": "0",
         "data": [{
@@ -137,8 +161,11 @@ async def test_get_available_cash_parses_balance():
         }],
     }
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await okx.get_available_cash("BTC/USD")
+    respx_mock.get(f"{OKX_BASE_URL}/api/v5/account/balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await okx.get_available_cash("BTC/USD")
 
     assert result.exchange == "okx"
     assert result.currency == "USD"
@@ -148,9 +175,9 @@ async def test_get_available_cash_parses_balance():
 
 
 @pytest.mark.asyncio
-async def test_get_all_balances_returns_all_currencies():
+async def test_get_all_balances_returns_all_currencies(respx_mock):
     """get_all_balances returns all currencies from full balance response."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
     balance_response = {
         "code": "0",
         "data": [{
@@ -161,8 +188,11 @@ async def test_get_all_balances_returns_all_currencies():
         }],
     }
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await okx.get_all_balances()
+    respx_mock.get(f"{OKX_BASE_URL}/api/v5/account/balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await okx.get_all_balances()
 
     assert result.exchange == "okx"
     assert len(result.currencies) == 2
@@ -174,9 +204,9 @@ async def test_get_all_balances_returns_all_currencies():
 
 
 @pytest.mark.asyncio
-async def test_get_all_positions_excludes_cash_and_zero():
+async def test_get_all_positions_excludes_cash_and_zero(respx_mock):
     """get_all_positions returns only non-zero, non-stablecoin holdings."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
     balance_response = {
         "code": "0",
         "data": [{
@@ -188,8 +218,11 @@ async def test_get_all_positions_excludes_cash_and_zero():
         }],
     }
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await okx.get_all_positions()
+    respx_mock.get(f"{OKX_BASE_URL}/api/v5/account/balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await okx.get_all_positions()
 
     assert result.exchange == "okx"
     assert len(result.positions) == 1
@@ -198,9 +231,9 @@ async def test_get_all_positions_excludes_cash_and_zero():
 
 
 @pytest.mark.asyncio
-async def test_get_available_positions_parses_balance():
+async def test_get_available_positions_parses_balance(respx_mock):
     """get_available_positions returns base currency balance."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
     balance_response = {
         "code": "0",
         "data": [{
@@ -213,8 +246,11 @@ async def test_get_available_positions_parses_balance():
         }],
     }
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await okx.get_available_positions("BTC/USD")
+    respx_mock.get(f"{OKX_BASE_URL}/api/v5/account/balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await okx.get_available_positions("BTC/USD")
 
     assert result.exchange == "okx"
     assert result.pair == "BTC/USD"
@@ -224,26 +260,15 @@ async def test_get_available_positions_parses_balance():
     assert result.total == 0.6
 
 
-@pytest.mark.asyncio
-async def test_get_trades_empty_response():
-    """get_trades handles empty data array without error."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
-
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value={"code": "0", "data": []}):
-        trades = await okx.get_trades()
-
-    assert trades == []
-
-
 # ---------------------------------------------------------------------------
 # place_order error handling
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_place_order_returns_error_on_okx_failure():
+async def test_place_order_returns_error_on_okx_failure(respx_mock):
     """place_order returns (None, error_msg) when OKX rejects the order."""
-    okx = OkxService(base_url="https://us.okx.com", simulated=True)
+    okx = OkxService(base_url=OKX_BASE_URL, simulated=True)
     okx_response = {
         "code": "1",
         "msg": "All operations failed",
@@ -253,46 +278,74 @@ async def test_place_order_returns_error_on_okx_failure():
         }],
     }
 
-    with patch.object(okx, "_request", new_callable=AsyncMock, return_value=okx_response):
-        order, err = await okx.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
-        )
+    route = respx_mock.post(f"{OKX_BASE_URL}/api/v5/trade/order").mock(
+        return_value=httpx.Response(200, json=okx_response),
+    )
+
+    order, err = await okx.place_order(
+        PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
+    )
 
     assert order is None
     assert err == "Order failed. Your available SOL balance is insufficient."
 
+    # Verify the request itself looked correct.
+    assert route.called
+    req = route.calls.last.request
+    assert req.method == "POST"
+    body = req.content.decode()
+    assert '"instId": "SOL-USDT"' in body
+    assert '"side": "sell"' in body
+    assert '"ordType": "market"' in body
+
 
 # ---------------------------------------------------------------------------
-# Order lifecycle (integration - requires API keys)
+# Order lifecycle (integration - requires API keys, hits paper-trading API)
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_place_view_cancel_order(okx: OkxService):
+async def test_place_view_cancel_order(okx_svc: OkxService):
     """
-    Full order lifecycle: place a limit order far from market price,
-    verify it appears in pending orders, cancel it, then verify it's gone.
+    Full order lifecycle against OKX paper-trading: place a limit order
+    far below market, verify it's pending, cancel it, verify it's gone.
+
+    Skipped unless all OKX simulated-trading credentials are configured.
     """
+    for var in ("OKX_API_KEY_SIMULATED", "OKX_API_SECRET_SIMULATED", "OKX_API_PASSPHRASE_SIMULATED"):
+        if not os.getenv(var):
+            pytest.skip(f"{var} not set; skipping live paper-trading test")
 
     order = PlaceOrderRequest(
         pair="BTC/USD",
         side="buy",
         type="limit",
-        price=1000.00,
-        size=1,
+        # Far below any realistic BTC price so the order cannot fill while
+        # the test is running; we want a pure place -> list -> cancel cycle.
+        price=1.00,
+        size=0.0001,
     )
-    placed, err = await okx.place_order(order)
+    placed, err = await okx_svc.place_order(order)
     assert err is None, f"place_order failed: {err}"
     assert placed is not None
     order_id = placed.id
 
-    pending = await okx.get_orders(pair="BTC/USD")
-    found = [o for o in pending if o.id == order_id]
-    assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
+    try:
+        pending = await okx_svc.get_orders(pair="BTC/USD")
+        found = [o for o in pending if o.id == order_id]
+        assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
 
-    cancelled = await okx.cancel_order(order_id, "BTC/USD")
-    assert cancelled is True, f"cancel_order returned False for order {order_id}"
+        cancelled = await okx_svc.cancel_order(order_id, "BTC/USD")
+        assert cancelled is True, f"cancel_order returned False for order {order_id}"
 
-    pending_after = await okx.get_orders(pair="BTC/USD")
-    still_there = [o for o in pending_after if o.id == order_id]
-    assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+        pending_after = await okx_svc.get_orders(pair="BTC/USD")
+        still_there = [o for o in pending_after if o.id == order_id]
+        assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+    finally:
+        # Best-effort cleanup so a failed assertion doesn't leak an open
+        # order on the paper account between runs.
+        try:
+            await okx_svc.cancel_order(order_id, "BTC/USD")
+        except Exception:
+            pass

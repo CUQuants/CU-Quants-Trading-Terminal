@@ -1,26 +1,26 @@
-import sys
+"""Kraken service unit tests.
+
+These tests mock at the HTTP layer with ``respx`` (intercepts ``httpx``
+calls) rather than patching the service's private ``_request`` method.
+This lets us assert on the actual URL, method, form-urlencoded body,
+and auth headers Kraken sees — catching bugs in HMAC signing, nonce
+generation, path construction, and pair normalization.
+"""
+
 import os
-from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from exchange_services.kraken_service import KrakenService
 from models import PlaceOrderRequest, TradeResponse
 
 
-@pytest.fixture
-def kraken():
-    return KrakenService(base_url="https://api.kraken.com", simulated=True)
+KRAKEN_BASE_URL = "https://api.kraken.com"
 
 
-# ---------------------------------------------------------------------------
-# get_trades (TradesHistory) - mocked unit test
-# ---------------------------------------------------------------------------
-
-# Sample Kraken TradesHistory response (matches /private/TradesHistory format)
-# Kraken uses XXBT=BTC, ZUSD=USD, XETH=ETH; pair format XXBTZUSD
+# Sample Kraken TradesHistory response (matches /0/private/TradesHistory).
+# Kraken uses XXBT=BTC, ZUSD=USD, XETH=ETH; pair format XXBTZUSD.
 KRAKEN_TRADES_RESPONSE = {
     "error": [],
     "result": {
@@ -55,25 +55,21 @@ KRAKEN_TRADES_RESPONSE = {
 }
 
 
+# ---------------------------------------------------------------------------
+# get_trades (TradesHistory)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_get_trades_parses_trades_history_correctly():
-    """
-    Unit test: KrakenService.get_trades correctly parses Kraken TradesHistory API response
-    into TradeResponse objects with proper normalization.
+async def test_get_trades_parses_trades_history_correctly(respx_mock):
+    """KrakenService.get_trades parses TradesHistory into TradeResponse list."""
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
 
-    Success metrics:
-    - No exception raised
-    - Returns list of TradeResponse
-    - Pair normalization: XXBTZUSD -> BTC/USD, SOLUSD -> SOL/USD
-    - Role mapping (Kraken misc/order-type -> maker/taker)
-    - Fee: abs() applied if negative
-    - All required fields present and correctly typed
-    - Limit param respected (at most N items)
-    """
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+    respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/TradesHistory").mock(
+        return_value=httpx.Response(200, json=KRAKEN_TRADES_RESPONSE),
+    )
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=KRAKEN_TRADES_RESPONSE):
-        trades = await kraken.get_trades(limit=10)
+    trades = await kraken.get_trades(limit=10)
 
     assert isinstance(trades, list)
     assert len(trades) == 2
@@ -89,7 +85,7 @@ async def test_get_trades_parses_trades_history_correctly():
     assert t0.price == 82.01
     assert t0.size == 1.0
     assert t0.fee == 0.002
-    assert t0.fee_currency  # set (quote or base per Kraken)
+    assert t0.fee_currency
     assert t0.role in ("maker", "taker")
     assert t0.timestamp
 
@@ -101,29 +97,65 @@ async def test_get_trades_parses_trades_history_correctly():
 
 
 @pytest.mark.asyncio
-async def test_get_trades_pair_filter_and_limit():
-    """get_trades with pair filter requests correct pair; limit caps results."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+async def test_get_trades_pair_filter_and_limit(respx_mock):
+    """get_trades with pair filter sends ``pair=XETHUSD`` in form body.
 
-    captured_path_or_body = None
+    With respx we can verify the full Kraken request: POST method, the
+    ``/0/private/TradesHistory`` path, the form-urlencoded body, and
+    the presence of HMAC signing headers.
+    """
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_path_or_body
-        captured_path_or_body = body if body else path
-        return {"error": [], "result": {"trades": dict(list(KRAKEN_TRADES_RESPONSE["result"]["trades"].items())[:1]), "count": 1}}
+    route = respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/TradesHistory").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "error": [],
+                "result": {
+                    "trades": dict(list(KRAKEN_TRADES_RESPONSE["result"]["trades"].items())[:1]),
+                    "count": 1,
+                },
+            },
+        ),
+    )
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        await kraken.get_trades(pair="ETH/USD", limit=5)
+    await kraken.get_trades(pair="ETH/USD", limit=5)
 
-    assert captured_path_or_body is not None
-    # Implementation will pass pair and count in request (Kraken uses POST with body)
-    assert "ETH" in str(captured_path_or_body) or "eth" in str(captured_path_or_body).lower()
+    assert route.called
+    req = route.calls.last.request
+    assert req.method == "POST"
+    # Body is form-urlencoded: ``nonce=...&pair=XETHUSD``.
+    body = req.content.decode()
+    assert "pair=XETHUSD" in body
+    assert "nonce=" in body
+    # HMAC signing headers must be set.
+    assert req.headers.get("API-Key") is not None
+    assert req.headers.get("API-Sign") is not None
+    assert req.headers.get("content-type", "").startswith("application/x-www-form-urlencoded")
 
 
 @pytest.mark.asyncio
-async def test_get_available_cash_parses_balance():
+async def test_get_trades_empty_response(respx_mock):
+    """get_trades handles empty trades dict without error."""
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
+
+    respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/TradesHistory").mock(
+        return_value=httpx.Response(200, json={"error": [], "result": {"trades": {}, "count": 0}}),
+    )
+
+    trades = await kraken.get_trades()
+    assert trades == []
+
+
+# ---------------------------------------------------------------------------
+# Account balance endpoints
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_available_cash_parses_balance(respx_mock):
     """get_available_cash returns quote currency (ZUSD->USD) balance."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
     balance_response = {
         "error": [],
         "result": {
@@ -132,8 +164,11 @@ async def test_get_available_cash_parses_balance():
         },
     }
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_available_cash("BTC/USD")
+    respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/Balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await kraken.get_available_cash("BTC/USD")
 
     assert result.exchange == "kraken"
     assert result.currency == "USD"
@@ -143,9 +178,9 @@ async def test_get_available_cash_parses_balance():
 
 
 @pytest.mark.asyncio
-async def test_get_all_balances_returns_all_currencies():
+async def test_get_all_balances_returns_all_currencies(respx_mock):
     """get_all_balances returns all currencies from full balance response."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
     balance_response = {
         "error": [],
         "result": {
@@ -154,8 +189,11 @@ async def test_get_all_balances_returns_all_currencies():
         },
     }
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_all_balances()
+    respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/Balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await kraken.get_all_balances()
 
     assert result.exchange == "kraken"
     assert len(result.currencies) == 2
@@ -166,9 +204,9 @@ async def test_get_all_balances_returns_all_currencies():
 
 
 @pytest.mark.asyncio
-async def test_get_all_positions_excludes_cash_and_zero():
+async def test_get_all_positions_excludes_cash_and_zero(respx_mock):
     """get_all_positions returns only non-zero, non-stablecoin holdings."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
     balance_response = {
         "error": [],
         "result": {
@@ -178,8 +216,11 @@ async def test_get_all_positions_excludes_cash_and_zero():
         },
     }
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_all_positions()
+    respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/Balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await kraken.get_all_positions()
 
     assert result.exchange == "kraken"
     assert len(result.positions) == 1
@@ -188,9 +229,13 @@ async def test_get_all_positions_excludes_cash_and_zero():
 
 
 @pytest.mark.asyncio
-async def test_get_available_positions_parses_balance():
-    """get_available_positions returns base currency balance."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+async def test_get_available_positions_parses_balance(respx_mock):
+    """get_available_positions returns base currency balance.
+
+    Kraken's real /0/private/Balance returns BTC under the legacy
+    X-prefixed key ``XXBT`` (not ``XBT``). The mock mirrors that.
+    """
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
     balance_response = {
         "error": [],
         "result": {
@@ -199,8 +244,11 @@ async def test_get_available_positions_parses_balance():
         },
     }
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_available_positions("BTC/USD")
+    respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/Balance").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await kraken.get_available_positions("BTC/USD")
 
     assert result.exchange == "kraken"
     assert result.pair == "BTC/USD"
@@ -209,71 +257,86 @@ async def test_get_available_positions_parses_balance():
     assert result.total >= 0.5
 
 
-@pytest.mark.asyncio
-async def test_get_trades_empty_response():
-    """get_trades handles empty trades dict without error."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
-
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value={"error": [], "result": {"trades": {}, "count": 0}}):
-        trades = await kraken.get_trades()
-
-    assert trades == []
-
-
 # ---------------------------------------------------------------------------
 # place_order error handling
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_place_order_returns_error_on_kraken_failure():
+async def test_place_order_returns_error_on_kraken_failure(respx_mock):
     """place_order returns (None, error_msg) when Kraken rejects the order."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+    kraken = KrakenService(base_url=KRAKEN_BASE_URL, simulated=True)
     kraken_response = {
         "error": ["EInsufficient:Insufficient funds"],
         "result": {},
     }
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=kraken_response):
-        order, err = await kraken.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
-        )
+    route = respx_mock.post(f"{KRAKEN_BASE_URL}/0/private/AddOrder").mock(
+        return_value=httpx.Response(200, json=kraken_response),
+    )
+
+    order, err = await kraken.place_order(
+        PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
+    )
 
     assert order is None
     assert err is not None
     assert "Insufficient" in err or "funds" in err.lower()
 
+    # Verify request shape.
+    assert route.called
+    body = route.calls.last.request.content.decode()
+    assert "pair=SOLUSD" in body
+    assert "type=sell" in body
+    assert "ordertype=market" in body
+
 
 # ---------------------------------------------------------------------------
-# Order lifecycle (integration - requires API keys)
+# Order lifecycle (integration - hits LIVE Kraken API)
 # ---------------------------------------------------------------------------
+# WARNING: Kraken has no paper-trading sandbox. ``simulated=True`` is a
+# no-op on KrakenService today, so this test places a real (but
+# intentionally unfillable) order on the live account. It is skipped
+# unless KRAKEN_API_KEY and KRAKEN_API_SECRET are explicitly set.
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_place_view_cancel_order(kraken: KrakenService):
-    """
-    Full order lifecycle: place a limit order far from market price,
-    verify it appears in pending orders, cancel it, then verify it's gone.
-    """
+async def test_place_view_cancel_order(kraken_svc: KrakenService):
+    """Full order lifecycle: place limit far from market, list, cancel, verify gone."""
+    for var in ("KRAKEN_API_KEY", "KRAKEN_API_SECRET"):
+        if not os.getenv(var):
+            pytest.skip(f"{var} not set; skipping live-API Kraken test")
+
     order = PlaceOrderRequest(
         pair="BTC/USD",
         side="buy",
         type="limit",
-        price=1000.00,
-        size=1,
+        # Far below any realistic BTC price so the order cannot fill while
+        # the test runs. This is the price (in USD) per BTC.
+        price=1000,
+        size=0.1,
     )
-    placed, err = await kraken.place_order(order)
+    placed, err = await kraken_svc.place_order(order)
     assert err is None, f"place_order failed: {err}"
     assert placed is not None
     order_id = placed.id
 
-    pending = await kraken.get_orders(pair="BTC/USD")
-    found = [o for o in pending if o.id == order_id]
-    assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
+    try:
+        pending = await kraken_svc.get_orders(pair="BTC/USD")
+        found = [o for o in pending if o.id == order_id]
+        assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
 
-    cancelled = await kraken.cancel_order(order_id, "BTC/USD")
-    assert cancelled is True, f"cancel_order returned False for order {order_id}"
+        cancelled = await kraken_svc.cancel_order(order_id, "BTC/USD")
+        assert cancelled is True, f"cancel_order returned False for order {order_id}"
 
-    pending_after = await kraken.get_orders(pair="BTC/USD")
-    still_there = [o for o in pending_after if o.id == order_id]
-    assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+        pending_after = await kraken_svc.get_orders(pair="BTC/USD")
+        still_there = [o for o in pending_after if o.id == order_id]
+        assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+    finally:
+        # Best-effort cleanup so a failed assertion doesn't leak an open
+        # order on the live account between runs.
+        try:
+            await kraken_svc.cancel_order(order_id, "BTC/USD")
+        except Exception:
+            pass

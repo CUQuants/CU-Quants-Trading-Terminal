@@ -198,14 +198,18 @@ class KrakenService(ExchangeService):
         return pair.split("/")[0]
 
     def _find_balance_for(self, balances: Dict[str, str], standard_ccy: str) -> float:
-        """Look up a balance by standard currency name, checking all Kraken aliases."""
-        # Direct match (e.g. SOL, DOT)
-        if standard_ccy in balances:
-            return float(balances[standard_ccy])
-        # Reverse-lookup the Kraken key
-        kraken_key = _STANDARD_TO_KRAKEN_ASSET.get(standard_ccy)
-        if kraken_key and kraken_key in balances:
-            return float(balances[kraken_key])
+        """Look up a balance by standard currency name, checking all Kraken aliases.
+
+        Iterates the response and normalizes each Kraken key *forward* via
+        ``_KRAKEN_ASSET_TO_STANDARD``. This handles every alias for a
+        given standard currency (e.g. both ``XXBT`` and ``XBT`` for BTC,
+        and the unprefixed ``SOL``/``DOT``/etc. that Kraken uses for
+        newer assets) without depending on the reverse lookup table,
+        which collapses aliases via last-write-wins.
+        """
+        for kraken_key, raw_val in balances.items():
+            if self._normalize_currency(kraken_key) == standard_ccy:
+                return float(raw_val)
         return 0.0
 
     # ------------------------------------------------------------------

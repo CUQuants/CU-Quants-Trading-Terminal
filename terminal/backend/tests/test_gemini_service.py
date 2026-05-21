@@ -1,26 +1,38 @@
-import sys
+"""Gemini service unit tests.
+
+These tests mock at the HTTP layer with ``respx`` (intercepts ``httpx``
+calls) rather than patching the service's private ``_request`` method.
+This lets us assert on the actual URL, method, auth headers
+(``X-GEMINI-APIKEY``, ``X-GEMINI-SIGNATURE``), and the base64-encoded
+JSON payload that Gemini receives.
+
+Note: ``GeminiService(simulated=True)`` rewrites ``base_url`` inside
+the constructor to point at the sandbox, so all respx mocks below
+target the sandbox host even though tests pass production URLs.
+"""
+
+import base64
+import json
 import os
-from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from exchange_services.gemini_service import GeminiService
 from models import PlaceOrderRequest, TradeResponse
 
 
-@pytest.fixture
-def gemini():
-    return GeminiService(base_url="https://api.gemini.com", simulated=True)
+# GeminiService(simulated=True) forces base_url to the sandbox regardless
+# of what's passed to the constructor; mocks must target the sandbox.
+GEMINI_BASE_URL = "https://api.sandbox.gemini.com"
 
 
-# ---------------------------------------------------------------------------
-# get_trades (mytrades) - mocked unit test
-# ---------------------------------------------------------------------------
+def _decode_gemini_payload(request: httpx.Request) -> dict:
+    """Extract and decode the X-GEMINI-PAYLOAD header on a request."""
+    return json.loads(base64.b64decode(request.headers["X-GEMINI-PAYLOAD"]))
 
-# Sample Gemini mytrades response (matches /v1/mytrades format)
+
+# Sample Gemini mytrades response (matches /v1/mytrades format).
 # Gemini uses lowercase symbol: btcusd, ethusd, solusd
 GEMINI_TRADES_RESPONSE = [
     {
@@ -50,30 +62,25 @@ GEMINI_TRADES_RESPONSE = [
 ]
 
 
-@pytest.mark.asyncio
-async def test_get_trades_parses_mytrades_correctly():
-    """
-    Unit test: GeminiService.get_trades correctly parses Gemini mytrades API response
-    into TradeResponse objects with proper normalization.
+# ---------------------------------------------------------------------------
+# get_trades (mytrades)
+# ---------------------------------------------------------------------------
 
-    Success metrics:
-    - No exception raised
-    - Returns list of TradeResponse
-    - Pair normalization: btcusd -> BTC/USD, solusd -> SOL/USD
-    - Role mapping: is_maker True -> maker, False -> taker
-    - Fee: abs() applied if negative
-    - All required fields present and correctly typed
-    - Limit param respected (at most N items)
-    """
+
+@pytest.mark.asyncio
+async def test_get_trades_parses_mytrades_correctly(respx_mock):
+    """GeminiService.get_trades parses mytrades into TradeResponse list."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=GEMINI_TRADES_RESPONSE):
-        trades = await gemini.get_trades(limit=10)
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/mytrades").mock(
+        return_value=httpx.Response(200, json=GEMINI_TRADES_RESPONSE),
+    )
+
+    trades = await gemini.get_trades(limit=10)
 
     assert isinstance(trades, list)
     assert len(trades) == 2
 
-    # First trade: solusd, buy, maker
     t0 = trades[0]
     assert isinstance(t0, TradeResponse)
     assert str(t0.id) == "123456789"
@@ -88,7 +95,6 @@ async def test_get_trades_parses_mytrades_correctly():
     assert t0.role == "maker"
     assert t0.timestamp
 
-    # Second trade: btcusd, sell, taker
     t1 = trades[1]
     assert t1.pair == "BTC/USD"
     assert t1.side == "sell"
@@ -97,30 +103,46 @@ async def test_get_trades_parses_mytrades_correctly():
 
 
 @pytest.mark.asyncio
-async def test_get_trades_pair_filter_and_limit():
-    """get_trades with pair filter requests correct symbol; limit caps results."""
+async def test_get_trades_pair_filter_and_limit(respx_mock):
+    """get_trades with pair filter sends symbol + limit_trades in payload."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    captured_headers = None
+    route = respx_mock.post(f"{GEMINI_BASE_URL}/v1/mytrades").mock(
+        return_value=httpx.Response(200, json=GEMINI_TRADES_RESPONSE[:1]),
+    )
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_headers
-        captured_headers = headers
-        return GEMINI_TRADES_RESPONSE[:1]
+    await gemini.get_trades(pair="ETH/USD", limit=5)
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        await gemini.get_trades(pair="ETH/USD", limit=5)
-
-    assert captured_headers is not None
-    # The payload (including symbol) is base64-encoded in the X-GEMINI-PAYLOAD header
-    import base64, json
-    payload = json.loads(base64.b64decode(captured_headers["X-GEMINI-PAYLOAD"]))
+    assert route.called
+    payload = _decode_gemini_payload(route.calls.last.request)
     assert payload["symbol"] == "ethusd"
     assert payload["limit_trades"] == 5
+    # Auth headers must be present.
+    req = route.calls.last.request
+    assert req.headers.get("X-GEMINI-APIKEY") is not None
+    assert req.headers.get("X-GEMINI-SIGNATURE")
 
 
 @pytest.mark.asyncio
-async def test_get_available_cash_parses_balance():
+async def test_get_trades_empty_response(respx_mock):
+    """get_trades handles empty array without error."""
+    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
+
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/mytrades").mock(
+        return_value=httpx.Response(200, json=[]),
+    )
+
+    trades = await gemini.get_trades()
+    assert trades == []
+
+
+# ---------------------------------------------------------------------------
+# Account balance endpoints
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_available_cash_parses_balance(respx_mock):
     """get_available_cash returns quote currency (USD) balance."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
     balance_response = [
@@ -128,8 +150,11 @@ async def test_get_available_cash_parses_balance():
         {"currency": "BTC", "amount": "0.5", "available": "0.5"},
     ]
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await gemini.get_available_cash("BTC/USD")
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/balances").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await gemini.get_available_cash("BTC/USD")
 
     assert result.exchange == "gemini"
     assert result.currency == "USD"
@@ -139,7 +164,7 @@ async def test_get_available_cash_parses_balance():
 
 
 @pytest.mark.asyncio
-async def test_get_all_balances_returns_all_currencies():
+async def test_get_all_balances_returns_all_currencies(respx_mock):
     """get_all_balances returns all currencies from full balance response."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
     balance_response = [
@@ -147,8 +172,11 @@ async def test_get_all_balances_returns_all_currencies():
         {"currency": "BTC", "amount": "0.5", "available": "0.5"},
     ]
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await gemini.get_all_balances()
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/balances").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await gemini.get_all_balances()
 
     assert result.exchange == "gemini"
     assert len(result.currencies) == 2
@@ -159,7 +187,7 @@ async def test_get_all_balances_returns_all_currencies():
 
 
 @pytest.mark.asyncio
-async def test_get_all_positions_excludes_cash_and_zero():
+async def test_get_all_positions_excludes_cash_and_zero(respx_mock):
     """get_all_positions returns only non-zero, non-stablecoin holdings."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
     balance_response = [
@@ -168,8 +196,11 @@ async def test_get_all_positions_excludes_cash_and_zero():
         {"currency": "ETH", "amount": "0", "available": "0"},
     ]
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await gemini.get_all_positions()
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/balances").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await gemini.get_all_positions()
 
     assert result.exchange == "gemini"
     assert len(result.positions) == 1
@@ -178,7 +209,7 @@ async def test_get_all_positions_excludes_cash_and_zero():
 
 
 @pytest.mark.asyncio
-async def test_get_available_positions_parses_balance():
+async def test_get_available_positions_parses_balance(respx_mock):
     """get_available_positions returns base currency balance."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
     balance_response = [
@@ -186,8 +217,11 @@ async def test_get_available_positions_parses_balance():
         {"currency": "USD", "amount": "1000", "available": "1000"},
     ]
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await gemini.get_available_positions("BTC/USD")
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/balances").mock(
+        return_value=httpx.Response(200, json=balance_response),
+    )
+
+    result = await gemini.get_available_positions("BTC/USD")
 
     assert result.exchange == "gemini"
     assert result.pair == "BTC/USD"
@@ -196,24 +230,13 @@ async def test_get_available_positions_parses_balance():
     assert result.total >= 0.5
 
 
-@pytest.mark.asyncio
-async def test_get_trades_empty_response():
-    """get_trades handles empty array without error."""
-    gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
-
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=[]):
-        trades = await gemini.get_trades()
-
-    assert trades == []
-
-
 # ---------------------------------------------------------------------------
-# place_order error handling
+# place_order
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_place_order_returns_error_on_gemini_failure():
+async def test_place_order_returns_error_on_gemini_failure(respx_mock):
     """place_order returns (None, error_msg) when Gemini rejects the order."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
     gemini_response = {
@@ -222,10 +245,17 @@ async def test_place_order_returns_error_on_gemini_failure():
         "message": "Insufficient balance for order",
     }
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, return_value=gemini_response):
-        order, err = await gemini.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1, price=100.0),
-        )
+    # Market orders normalize the price via the symbols/details endpoint.
+    respx_mock.get(f"{GEMINI_BASE_URL}/v1/symbols/details/solusd").mock(
+        return_value=httpx.Response(200, json={"quote_increment": "0.01"}),
+    )
+    respx_mock.post(f"{GEMINI_BASE_URL}/v1/order/new").mock(
+        return_value=httpx.Response(200, json=gemini_response),
+    )
+
+    order, err = await gemini.place_order(
+        PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1, price=100.0),
+    )
 
     assert order is None
     assert err is not None
@@ -233,155 +263,151 @@ async def test_place_order_returns_error_on_gemini_failure():
 
 
 @pytest.mark.asyncio
-async def test_place_order_market_requires_explicit_price():
-    """Market orders should be rejected when no explicit price is provided."""
+async def test_place_order_market_requires_explicit_price(respx_mock):
+    """Market orders should be rejected when no explicit price is provided.
+
+    No HTTP call should be made at all — respx's default strict mode
+    fails the test if any unmocked request is attempted, which doubles
+    as an assertion that the service short-circuits before networking.
+    """
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock) as req_mock:
-        order, err = await gemini.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1),
-        )
+    order, err = await gemini.place_order(
+        PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1),
+    )
 
     assert order is None
     assert err == "Market orders require price"
-    req_mock.assert_not_awaited()
+    # No routes registered → no requests should have been made.
+    assert len(respx_mock.calls) == 0
 
 
 @pytest.mark.asyncio
-async def test_place_order_market_uses_explicit_price_without_ticker_lookup():
-    """Market order should use provided price directly and keep IOC behavior."""
+async def test_place_order_market_uses_explicit_price_without_ticker_lookup(respx_mock):
+    """Market order should use provided price directly and keep IOC behavior.
+
+    The ticker endpoint is intentionally NOT mocked — if the service
+    code attempts to call it, respx will raise (strict mode) and the
+    test will fail with a clear "unmocked request" error.
+    """
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    captured_payload = None
+    respx_mock.get(f"{GEMINI_BASE_URL}/v1/symbols/details/solusd").mock(
+        return_value=httpx.Response(200, json={"quote_increment": "0.01"}),
+    )
+    order_route = respx_mock.post(f"{GEMINI_BASE_URL}/v1/order/new").mock(
+        return_value=httpx.Response(200, json={"order_id": "1", "is_live": True, "timestamp": "1730385593"}),
+    )
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_payload
-        _ = body
-        if method == "GET" and path == "/v2/ticker/solusd":
-            raise AssertionError("Ticker endpoint should not be called when explicit market price is provided")
-        if method == "GET" and path == "/v1/symbols/details/solusd":
-            return {"quote_increment": "0.01"}
-        if method == "POST" and path == "/v1/order/new":
-            import base64, json
-            captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
-            return {"order_id": "1", "is_live": True, "timestamp": "1730385593"}
-        return {}
-
-    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        order, err = await gemini.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1, price=123.4567),
-        )
+    order, err = await gemini.place_order(
+        PlaceOrderRequest(pair="SOL/USD", side="buy", type="market", size=1, price=123.4567),
+    )
 
     assert err is None
     assert order is not None
-    assert isinstance(captured_payload, dict)
-    assert captured_payload["options"] == ["immediate-or-cancel"]
-    assert captured_payload["price"] == "123.46"
+    assert order_route.called
+    payload = _decode_gemini_payload(order_route.calls.last.request)
+    assert payload["options"] == ["immediate-or-cancel"]
+    assert payload["price"] == "123.46"
 
 
 @pytest.mark.asyncio
-async def test_place_order_market_uses_symbol_increment_rounding():
+async def test_place_order_market_uses_symbol_increment_rounding(respx_mock):
     """Market IOC prices should use provided references and valid quote increment rounding."""
     service = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    captured_payloads = []
+    # symbols/details is hit once and the increment is cached for the
+    # second place_order call.
+    respx_mock.get(f"{GEMINI_BASE_URL}/v1/symbols/details/ethusd").mock(
+        return_value=httpx.Response(200, json={"quote_increment": "0.01"}),
+    )
+    order_route = respx_mock.post(f"{GEMINI_BASE_URL}/v1/order/new").mock(
+        side_effect=[
+            httpx.Response(200, json={"order_id": "1", "is_live": True, "timestamp": "1730385593"}),
+            httpx.Response(200, json={"order_id": "2", "is_live": True, "timestamp": "1730385593"}),
+        ],
+    )
 
-    async def capture_request(method, path, body=None, headers=None):
-        _ = body
-        if method == "GET" and path == "/v1/symbols/details/ethusd":
-            return {"quote_increment": "0.01"}
-        if method == "GET" and path == "/v2/ticker/ethusd":
-            raise AssertionError("Ticker endpoint should not be called for market IOC pricing")
-        if method == "POST" and path == "/v1/order/new":
-            import base64, json
-            payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
-            captured_payloads.append(payload)
-            return {"order_id": str(len(captured_payloads)), "is_live": True, "timestamp": "1730385593"}
-        return {}
-
-    with patch.object(service, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        _, buy_err = await service.place_order(
-            PlaceOrderRequest(pair="ETH/USD", side="buy", type="market", size=0.01, price=3047.50),
-        )
-        _, sell_err = await service.place_order(
-            PlaceOrderRequest(pair="ETH/USD", side="sell", type="market", size=0.01, price=3047.00),
-        )
+    _, buy_err = await service.place_order(
+        PlaceOrderRequest(pair="ETH/USD", side="buy", type="market", size=0.01, price=3047.50),
+    )
+    _, sell_err = await service.place_order(
+        PlaceOrderRequest(pair="ETH/USD", side="sell", type="market", size=0.01, price=3047.00),
+    )
 
     assert buy_err is None
     assert sell_err is None
-    assert len(captured_payloads) == 2
-    assert captured_payloads[0]["price"] == "3047.5"
-    assert captured_payloads[1]["price"] == "3047"
+    assert order_route.call_count == 2
+
+    buy_payload = _decode_gemini_payload(order_route.calls[0].request)
+    sell_payload = _decode_gemini_payload(order_route.calls[1].request)
+    assert buy_payload["price"] == "3047.5"
+    assert sell_payload["price"] == "3047"
 
 
 @pytest.mark.asyncio
-async def test_place_order_limit_price_is_rounded_to_increment():
+async def test_place_order_limit_price_is_rounded_to_increment(respx_mock):
     """Limit order prices should be normalized to valid quote increment."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
 
-    captured_payload = None
+    respx_mock.get(f"{GEMINI_BASE_URL}/v1/symbols/details/ethusd").mock(
+        return_value=httpx.Response(200, json={"quote_increment": "0.01"}),
+    )
+    order_route = respx_mock.post(f"{GEMINI_BASE_URL}/v1/order/new").mock(
+        return_value=httpx.Response(200, json={"order_id": "1", "is_live": True, "timestamp": "1730385593"}),
+    )
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_payload
-        if method == "GET" and path == "/v1/symbols/details/ethusd":
-            return {"quote_increment": "0.01"}
-        if method == "POST" and path == "/v1/order/new":
-            import base64, json
-            captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
-            return {"order_id": "1", "is_live": True, "timestamp": "1730385593"}
-        return {}
-
-    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        order, err = await gemini.place_order(
-            PlaceOrderRequest(pair="ETH/USD", side="buy", type="limit", size=0.01, price=3047.57555),
-        )
+    order, err = await gemini.place_order(
+        PlaceOrderRequest(pair="ETH/USD", side="buy", type="limit", size=0.01, price=3047.57555),
+    )
 
     assert err is None
     assert order is not None
-    assert captured_payload is not None
-    assert captured_payload["price"] == "3047.58"
+    payload = _decode_gemini_payload(order_route.calls.last.request)
+    assert payload["price"] == "3047.58"
 
 
 @pytest.mark.asyncio
-async def test_gemini_request_omits_account_when_not_configured():
-    """`account` should only be sent when explicitly configured."""
+async def test_gemini_request_omits_account_when_not_configured(respx_mock):
+    """``account`` should only be sent in the payload when explicitly configured."""
     gemini = GeminiService(base_url="https://api.gemini.com", simulated=True)
     gemini.api_key = "non-master-key"
     gemini.is_master_api_key = False
     gemini.account = ""
 
-    captured_payload = None
+    route = respx_mock.post(f"{GEMINI_BASE_URL}/v1/mytrades").mock(
+        return_value=httpx.Response(200, json=[]),
+    )
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_payload
-        import base64, json
-        captured_payload = json.loads(base64.b64decode(headers["X-GEMINI-PAYLOAD"]))
-        return []
+    await gemini.get_trades(pair="ETH/USD", limit=1)
 
-    with patch.object(gemini, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        await gemini.get_trades(pair="ETH/USD", limit=1)
-
-    assert captured_payload is not None
-    assert "account" not in captured_payload
+    assert route.called
+    payload = _decode_gemini_payload(route.calls.last.request)
+    assert "account" not in payload
 
 
 # ---------------------------------------------------------------------------
-# Order lifecycle (integration - requires API keys)
+# Order lifecycle (integration - hits real Gemini API)
 # ---------------------------------------------------------------------------
+# WARNING: this test defaults to production Gemini. Switch the gemini_svc
+# fixture's base_url to https://api.sandbox.gemini.com if you'd rather
+# run against the paper-trading sandbox.
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_place_view_cancel_order(gemini: GeminiService):
-    """
-    Full order lifecycle: place a limit order away from market,
-    verify it appears in pending orders, cancel it, then verify it's gone.
-    """
+async def test_place_view_cancel_order(gemini_svc: GeminiService):
+    """Full order lifecycle: place limit away from market, list, cancel, verify gone."""
+    for var in ("GEMINI_API_KEY", "GEMINI_API_SECRET"):
+        if not os.getenv(var):
+            pytest.skip(f"{var} not set; skipping live Gemini lifecycle test")
+
     pair = "BTC/USD"
     symbol = "btcusd"
 
     try:
         async with httpx.AsyncClient() as client:
-            ticker_resp = await client.get(f"{gemini.base_url}/v2/ticker/{symbol}")
+            ticker_resp = await client.get(f"{gemini_svc.base_url}/v2/ticker/{symbol}")
             ticker_resp.raise_for_status()
             ticker = ticker_resp.json()
     except Exception:
@@ -392,8 +418,8 @@ async def test_place_view_cancel_order(gemini: GeminiService):
     if bid <= 0 or ask <= 0:
         pytest.skip("Gemini ticker unavailable for integration lifecycle test")
 
-    cash = await gemini.get_available_cash(pair)
-    pos = await gemini.get_available_positions(pair)
+    cash = await gemini_svc.get_available_cash(pair)
+    pos = await gemini_svc.get_available_positions(pair)
     min_notional_usd = 10.0
 
     order: PlaceOrderRequest
@@ -425,7 +451,7 @@ async def test_place_view_cancel_order(gemini: GeminiService):
     else:
         pytest.skip("Insufficient balances for integration lifecycle test")
 
-    placed, err = await gemini.place_order(order)
+    placed, err = await gemini_svc.place_order(order)
     if err is not None:
         if "GenericFailure" in err or "insufficient" in err.lower() or "balance" in err.lower():
             pytest.skip(f"Exchange rejected integration lifecycle order: {err}")
@@ -433,13 +459,21 @@ async def test_place_view_cancel_order(gemini: GeminiService):
     assert placed is not None
     order_id = placed.id
 
-    pending = await gemini.get_orders(pair=pair)
-    found = [o for o in pending if o.id == order_id]
-    assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
+    try:
+        pending = await gemini_svc.get_orders(pair=pair)
+        found = [o for o in pending if o.id == order_id]
+        assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
 
-    cancelled = await gemini.cancel_order(order_id, pair)
-    assert cancelled is True, f"cancel_order returned False for order {order_id}"
+        cancelled = await gemini_svc.cancel_order(order_id, pair)
+        assert cancelled is True, f"cancel_order returned False for order {order_id}"
 
-    pending_after = await gemini.get_orders(pair=pair)
-    still_there = [o for o in pending_after if o.id == order_id]
-    assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+        pending_after = await gemini_svc.get_orders(pair=pair)
+        still_there = [o for o in pending_after if o.id == order_id]
+        assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+    finally:
+        # Best-effort cleanup so a failed assertion doesn't leak an open
+        # order between runs.
+        try:
+            await gemini_svc.cancel_order(order_id, pair)
+        except Exception:
+            pass
