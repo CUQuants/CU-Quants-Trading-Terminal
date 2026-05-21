@@ -6,7 +6,6 @@ import base64
 import json
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -109,7 +108,7 @@ class OkxService(ExchangeService):
 
     async def place_order(
         self, request: PlaceOrderRequest
-    ) -> tuple[Optional[OrderResponse], Optional[str]]:
+    ) -> tuple[OrderResponse | None, str | None]:
         request_path = "/api/v5/trade/order"
         body_dict = {
             "instId": self._to_native_pair(request.pair),
@@ -159,7 +158,7 @@ class OkxService(ExchangeService):
         )
         return (order, None)
 
-    async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
+    async def get_orders(self, pair: str | None = None) -> list[OrderResponse]:
         base_path = "/api/v5/trade/orders-pending"
         params: dict = {"instType": "SPOT"}
         if pair:
@@ -171,7 +170,7 @@ class OkxService(ExchangeService):
 
         data = await self._request("GET", request_path, headers=headers)
 
-        orders: List[OrderResponse] = []
+        orders: list[OrderResponse] = []
         for item in data.get("data", []):
             orders.append(OrderResponse(
                 id=item["ordId"],
@@ -186,7 +185,7 @@ class OkxService(ExchangeService):
             ))
         return orders
 
-    async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
+    async def get_trades(self, pair: str | None = None, limit: int = 100) -> list[TradeResponse]:
         base_path = "/api/v5/trade/fills-history"
         params: dict = {"instType": "SPOT", "limit": str(limit)}
         if pair:
@@ -198,7 +197,7 @@ class OkxService(ExchangeService):
 
         data = await self._request("GET", request_path, headers=headers)
 
-        trades: List[TradeResponse] = []
+        trades: list[TradeResponse] = []
         for item in data.get("data", []):
             exec_type = item.get("execType", "")
             trades.append(TradeResponse(
@@ -232,7 +231,7 @@ class OkxService(ExchangeService):
     # REST: account balance (cash and positions)
     # ------------------------------------------------------------------
 
-    async def _fetch_all_balances(self) -> Dict[str, dict]:
+    async def _fetch_all_balances(self) -> dict[str, dict]:
         """Fetch full account balance from OKX (no ccy filter), filter in memory."""
         request_path = "/api/v5/account/balance"
         headers = self._get_headers("GET", request_path)
@@ -241,13 +240,13 @@ class OkxService(ExchangeService):
         if data.get("code") != "0":
             raise Exception(f"OKX balance failed: {data}")
 
-        result: Dict[str, dict] = {}
+        result: dict[str, dict] = {}
         for d in data.get("data", [{}])[0].get("details", []):
             ccy = d.get("ccy", "")
             result[ccy] = d
         return result
 
-    def _balance_for_ccy(self, balances: Dict[str, dict], ccy: str) -> dict:
+    def _balance_for_ccy(self, balances: dict[str, dict], ccy: str) -> dict:
         """Extract balance for a currency; return zeros if missing."""
         d = balances.get(ccy)
         if not d:

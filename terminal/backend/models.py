@@ -1,13 +1,13 @@
 from pydantic import BaseModel
-from typing import Literal, Optional, List
+from typing import Literal
 
 
 class PlaceOrderRequest(BaseModel):
     pair: str
     side: Literal["buy", "sell"]
     type: Literal["limit", "market", "iceberg"]
-    visible_size: Optional[float] = None
-    price: Optional[float] = None
+    visible_size: float | None = None
+    price: float | None = None
     size: float
 
 
@@ -17,11 +17,11 @@ class OrderResponse(BaseModel):
     exchange: str
     side: Literal["buy", "sell"]
     type: Literal["limit", "market", "iceberg"]
-    price: Optional[float] = None
-    visible_size: Optional[float] = None
+    price: float | None = None
+    visible_size: float | None = None
     size: float
     status: str
-    created_at: Optional[str] = None
+    created_at: str | None = None
 
 
 class TradeResponse(BaseModel):
@@ -90,7 +90,7 @@ class BalanceEntry(BaseModel):
 class AllBalancesResponse(BaseModel):
     """Full account balance for an exchange."""
     exchange: str
-    currencies: List[BalanceEntry]
+    currencies: list[BalanceEntry]
 
 
 class PositionEntry(BaseModel):
@@ -104,4 +104,4 @@ class PositionEntry(BaseModel):
 class AllPositionsResponse(BaseModel):
     """All positions for an exchange (non-zero, non-cash)."""
     exchange: str
-    positions: List[PositionEntry]
+    positions: list[PositionEntry]

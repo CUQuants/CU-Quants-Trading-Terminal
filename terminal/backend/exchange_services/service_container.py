@@ -1,5 +1,3 @@
-from typing import Dict, List
-
 from exchange_services.exchange import ExchangeService
 from exchange_services.okx_service import OkxService
 from exchange_services.kraken_service import KrakenService
@@ -12,8 +10,8 @@ load_dotenv()
 class ServiceContainer:
 
     def __init__(self):
-        self.services: Dict[str, ExchangeService] = {}
-        self.available_services: List[str] = ["okx", "kraken", "gemini"]
+        self.services: dict[str, ExchangeService] = {}
+        self.available_services: list[str] = ["okx", "kraken", "gemini"]
 
     def get_service(self, service_name: str) -> ExchangeService:
         if service_name not in self.available_services:

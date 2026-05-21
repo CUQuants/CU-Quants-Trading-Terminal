@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-from typing import Dict, Set
 import os
 
 from fastapi import WebSocket
@@ -37,9 +36,9 @@ class OrderEventRelay:
 
     def __init__(self, service_container: ServiceContainer):
         self._service_container = service_container
-        self._clients: Dict[str, Set[WebSocket]] = {}
-        self._event_queues: Dict[str, asyncio.Queue] = {}
-        self._fan_out_tasks: Dict[str, asyncio.Task] = {}
+        self._clients: dict[str, set[WebSocket]] = {}
+        self._event_queues: dict[str, asyncio.Queue] = {}
+        self._fan_out_tasks: dict[str, asyncio.Task] = {}
 
     # ------------------------------------------------------------------
     # Client registration (called from the WS route handler)

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
 import asyncio
 
 import httpx
@@ -34,7 +33,7 @@ class ExchangeService(ABC):
         pass
 
     @abstractmethod
-    async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
+    async def get_orders(self, pair: str | None = None) -> list[OrderResponse]:
         pass
 
     @abstractmethod
@@ -42,7 +41,7 @@ class ExchangeService(ABC):
         pass
 
     @abstractmethod
-    async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
+    async def get_trades(self, pair: str | None = None, limit: int = 100) -> list[TradeResponse]:
         pass
 
     @abstractmethod

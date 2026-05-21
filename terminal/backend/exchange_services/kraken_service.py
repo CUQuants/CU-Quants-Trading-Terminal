@@ -7,7 +7,6 @@ import os
 import threading
 import time
 import urllib.parse
-from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Kraken uses X-prefixed crypto and Z-prefixed fiat tickers in REST responses.
 # This map covers the legacy prefixed assets; newer assets (SOL, DOT, etc.)
 # appear without prefixes and are passed through as-is.
-_KRAKEN_ASSET_TO_STANDARD: Dict[str, str] = {
+_KRAKEN_ASSET_TO_STANDARD: dict[str, str] = {
     "XXBT": "BTC",
     "XBT": "BTC",
     "XETH": "ETH",
@@ -51,11 +50,11 @@ _KRAKEN_ASSET_TO_STANDARD: Dict[str, str] = {
     "ZAUD": "AUD",
 }
 
-_STANDARD_TO_KRAKEN_ASSET: Dict[str, str] = {v: k for k, v in _KRAKEN_ASSET_TO_STANDARD.items()}
+_STANDARD_TO_KRAKEN_ASSET: dict[str, str] = {v: k for k, v in _KRAKEN_ASSET_TO_STANDARD.items()}
 
 # Legacy pair patterns used in REST responses (e.g. XXBTZUSD).
 # Maps from the concatenated Kraken pair -> (base, quote) in standard form.
-_KNOWN_PAIR_PREFIXES: Dict[str, Tuple[str, str]] = {
+_KNOWN_PAIR_PREFIXES: dict[str, tuple[str, str]] = {
     "XXBTZUSD": ("BTC", "USD"),
     "XXBTZEUR": ("BTC", "EUR"),
     "XETHZUSD": ("ETH", "USD"),
@@ -109,7 +108,7 @@ class KrakenService(ExchangeService):
         mac = hmac.new(base64.b64decode(self.api_secret), message, hashlib.sha512)
         return base64.b64encode(mac.digest()).decode()
 
-    async def _private_request(self, path: str, extra_data: Optional[dict] = None) -> dict:
+    async def _private_request(self, path: str, extra_data: dict | None = None) -> dict:
         """Authenticated POST to a Kraken private endpoint.
 
         Adds nonce, signs, and sends form-encoded body through the inherited
@@ -197,7 +196,7 @@ class KrakenService(ExchangeService):
         """BTC/USD -> BTC."""
         return pair.split("/")[0]
 
-    def _find_balance_for(self, balances: Dict[str, str], standard_ccy: str) -> float:
+    def _find_balance_for(self, balances: dict[str, str], standard_ccy: str) -> float:
         """Look up a balance by standard currency name, checking all Kraken aliases.
 
         Iterates the response and normalizes each Kraken key *forward* via
@@ -218,7 +217,7 @@ class KrakenService(ExchangeService):
 
     async def place_order(
         self, request: PlaceOrderRequest,
-    ) -> Tuple[Optional[OrderResponse], Optional[str]]:
+    ) -> tuple[OrderResponse | None, str | None]:
         data = {
             "pair": self._to_native_pair(request.pair),
             "type": request.side,
@@ -260,11 +259,11 @@ class KrakenService(ExchangeService):
         self._feed_order_symbols({order_id: request.pair})
         return (order, None)
 
-    async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
+    async def get_orders(self, pair: str | None = None) -> list[OrderResponse]:
         resp = await self._private_request("/private/OpenOrders")
         raw_orders = resp.get("result", {}).get("open", {})
 
-        orders: List[OrderResponse] = []
+        orders: list[OrderResponse] = []
         for txid, item in raw_orders.items():
             descr = item.get("descr", {})
             item_pair = self._from_native_pair(descr.get("pair", ""))
@@ -300,8 +299,8 @@ class KrakenService(ExchangeService):
         return orders
 
     async def get_trades(
-        self, pair: Optional[str] = None, limit: int = 100,
-    ) -> List[TradeResponse]:
+        self, pair: str | None = None, limit: int = 100,
+    ) -> list[TradeResponse]:
         extra: dict = {}
         if pair:
             extra["pair"] = self._to_native_pair(pair)
@@ -309,7 +308,7 @@ class KrakenService(ExchangeService):
         resp = await self._private_request("/private/TradesHistory", extra)
         raw_trades = resp.get("result", {}).get("trades", {})
 
-        trades: List[TradeResponse] = []
+        trades: list[TradeResponse] = []
         for trade_id, item in raw_trades.items():
             if len(trades) >= limit:
                 break
@@ -341,7 +340,7 @@ class KrakenService(ExchangeService):
     # REST: account balance
     # ------------------------------------------------------------------
 
-    async def _fetch_all_balances(self) -> Dict[str, str]:
+    async def _fetch_all_balances(self) -> dict[str, str]:
         resp = await self._private_request("/private/Balance")
         return resp.get("result", {})
 
@@ -374,7 +373,7 @@ class KrakenService(ExchangeService):
 
     async def get_all_balances(self) -> AllBalancesResponse:
         balances = await self._fetch_all_balances()
-        currencies: List[BalanceEntry] = []
+        currencies: list[BalanceEntry] = []
         for raw_ccy, raw_val in balances.items():
             ccy = self._normalize_currency(raw_ccy)
             total = float(raw_val)
@@ -388,7 +387,7 @@ class KrakenService(ExchangeService):
 
     async def get_all_positions(self) -> AllPositionsResponse:
         balances = await self._fetch_all_balances()
-        positions: List[PositionEntry] = []
+        positions: list[PositionEntry] = []
         for raw_ccy, raw_val in balances.items():
             ccy = self._normalize_currency(raw_ccy)
             if ccy in self._CASH_CCYS:

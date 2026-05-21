@@ -7,7 +7,6 @@ import os
 import time
 import logging
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
-from typing import Dict, List, Optional, Tuple
 
 import httpx
 from dotenv import load_dotenv
@@ -61,7 +60,7 @@ class GeminiService(ExchangeService):
             slippage_bps = 50.0
         # Clamp to a sane range (0.01% .. 5.00%).
         self.market_slippage_bps = min(max(slippage_bps, 1.0), 500.0)
-        self._quote_increment_cache: Dict[str, Decimal] = {}
+        self._quote_increment_cache: dict[str, Decimal] = {}
     # ------------------------------------------------------------------
     # Auth / signing
     # ------------------------------------------------------------------
@@ -100,7 +99,7 @@ class GeminiService(ExchangeService):
 
     # Market orders on Gemini are emulated using aggressive IOC limit orders.
     # A market reference price must be provided by the caller.
-    async def _resolve_market_ioc_price(self, symbol: str, side: str, explicit_price: Optional[float]) -> str:
+    async def _resolve_market_ioc_price(self, symbol: str, side: str, explicit_price: float | None) -> str:
         if explicit_price is None:
             raise ValueError("Market orders require price")
         return await self._normalize_price(symbol, side, explicit_price)
@@ -194,7 +193,7 @@ class GeminiService(ExchangeService):
 
     async def place_order(
         self, request: PlaceOrderRequest
-    ) -> Tuple[Optional[OrderResponse], Optional[str]]:
+    ) -> tuple[OrderResponse | None, str | None]:
         request_path = "/v1/order/new"
         symbol = self._to_native_pair(request.pair)
         payload = {
@@ -238,7 +237,7 @@ class GeminiService(ExchangeService):
         )
         return (order, None)
 
-    async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
+    async def get_orders(self, pair: str | None = None) -> list[OrderResponse]:
         request_path = "/v1/orders"
         payload = {
             "request": request_path,
@@ -246,7 +245,7 @@ class GeminiService(ExchangeService):
         }
         data = await self._gemini_request("POST", request_path, payload)
 
-        orders: List[OrderResponse] = []
+        orders: list[OrderResponse] = []
         for item in data:
             item_pair = self._from_native_pair(item["symbol"])
             if pair and item_pair != pair:
@@ -283,7 +282,7 @@ class GeminiService(ExchangeService):
             return False
         return data.get("is_cancelled", False)
 
-    async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
+    async def get_trades(self, pair: str | None = None, limit: int = 100) -> list[TradeResponse]:
         request_path = "/v1/mytrades"
         payload: dict = {
             "request": request_path,
@@ -295,7 +294,7 @@ class GeminiService(ExchangeService):
 
         data = await self._gemini_request("POST", request_path, payload)
 
-        trades: List[TradeResponse] = []
+        trades: list[TradeResponse] = []
         for item in data:
             side_raw = item.get("side", item.get("type", "")).lower()
             side = "buy" if side_raw == "buy" else "sell"
@@ -319,7 +318,7 @@ class GeminiService(ExchangeService):
     # REST: account balance
     # ------------------------------------------------------------------
 
-    async def _fetch_all_balances(self) -> List[dict]:
+    async def _fetch_all_balances(self) -> list[dict]:
         request_path = "/v1/balances"
         payload = {
             "request": request_path,

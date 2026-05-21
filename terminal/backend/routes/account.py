@@ -1,5 +1,3 @@
-from typing import Union
-
 from fastapi import APIRouter, Query, Request
 
 from models import (
@@ -28,7 +26,7 @@ async def get_positions(
     request: Request,
     exchange: str,
     pair: str | None = Query(None, description="Trading pair (e.g. BTC/USD). Omit for all positions."),
-) -> Union[AvailablePositionResponse, AllPositionsResponse]:
+) -> AvailablePositionResponse | AllPositionsResponse:
     """Fetch position for a pair, or all positions if pair is omitted."""
     service = request.app.state.service_container.get_service(exchange)
     if pair:

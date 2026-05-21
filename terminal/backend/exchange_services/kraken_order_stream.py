@@ -6,7 +6,6 @@ import json
 import logging
 import time
 import urllib.parse
-from typing import Optional
 
 import httpx
 import websockets
@@ -59,7 +58,7 @@ class KrakenOrderStream(BaseOrderEventStream):
         self._api_key = api_key
         self._api_secret = api_secret
         self._base_url = base_url
-        self._token: Optional[str] = None
+        self._token: str | None = None
         self._order_symbols: dict[str, str] = {}
 
     # ------------------------------------------------------------------
@@ -205,7 +204,7 @@ class KrakenOrderStream(BaseOrderEventStream):
     # Event normalization
     # ------------------------------------------------------------------
 
-    def _normalize_order_event(self, item: dict) -> Optional[dict]:
+    def _normalize_order_event(self, item: dict) -> dict | None:
         exec_type = item.get("exec_type", "")
         if exec_type not in _RELEVANT_EXEC_TYPES:
             return None

@@ -1,4 +1,4 @@
-from typing import List
+
 
 from fastapi import APIRouter, Query, Request
 
@@ -7,7 +7,7 @@ from models import TradeResponse
 router = APIRouter(prefix="/trades", tags=["trades"])
 
 
-@router.get("/{exchange}", response_model=List[TradeResponse])
+@router.get("/{exchange}", response_model=list[TradeResponse])
 async def get_trades(
     request: Request,
     exchange: str,
