@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent, type ChangeEvent } from "react";
 import type { Exchange } from "../types/orderbook";
-import { EXCHANGE_SYMBOLS } from "../types/orderbook";
+import type { ExchangePairOptions } from "../hooks/useRowConfig";
 
 const PAIR_PATTERN = /^[A-Z0-9]+\/[A-Z0-9]+$/i;
 
@@ -14,10 +14,11 @@ function isValidPair(input: string): boolean {
 
 interface Props {
   configuredPairs: Record<Exchange, string[]>;
+  pairOptions: ExchangePairOptions;
   onAdd: (exchange: Exchange, pair: string) => void;
 }
 
-export function RowConfigPanel({ configuredPairs, onAdd }: Props) {
+export function RowConfigPanel({ configuredPairs, pairOptions, onAdd }: Props) {
   const [exchange, setExchange] = useState<Exchange>("okx");
   const [pairInput, setPairInput] = useState("");
 
@@ -31,15 +32,23 @@ export function RowConfigPanel({ configuredPairs, onAdd }: Props) {
     setPairInput("");
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleAdd();
+  };
+
+  const handleExchangeChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    setExchange(e.target.value as Exchange);
+  };
+
+  const handlePairChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setPairInput(e.target.value);
   };
 
   return (
     <div className="flex items-center gap-3 px-6 py-3 bg-white/[0.02] border-b border-white/10">
       <select
         value={exchange}
-        onChange={(e) => setExchange(e.target.value as Exchange)}
+        onChange={handleExchangeChange}
         className="px-3 py-1.5 text-sm rounded-lg border border-white/20 bg-white/5 text-white cursor-pointer outline-none hover:border-white/30 focus:border-blue-500"
       >
         <option value="kraken">Kraken</option>
@@ -51,14 +60,14 @@ export function RowConfigPanel({ configuredPairs, onAdd }: Props) {
         <input
           type="text"
           value={pairInput}
-          onChange={(e) => setPairInput(e.target.value)}
+          onChange={handlePairChange}
           onKeyDown={handleKeyDown}
           placeholder="e.g. BTC/USD or DOGE/USD"
           list="pair-suggestions"
           className="w-full px-3 py-1.5 text-sm rounded-lg border border-white/20 bg-white/5 text-white placeholder-white/30 outline-none hover:border-white/30 focus:border-blue-500"
         />
         <datalist id="pair-suggestions">
-          {EXCHANGE_SYMBOLS[exchange].map((s) => (
+          {pairOptions[exchange].map((s) => (
             <option key={s} value={s} />
           ))}
         </datalist>

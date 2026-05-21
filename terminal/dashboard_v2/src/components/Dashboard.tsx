@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Exchange } from "../types/orderbook";
-import type { RowConfig } from "../hooks/useRowConfig";
+import type { ExchangePairOptions, RowConfig } from "../hooks/useRowConfig";
 import { useOkxWs } from "../contexts/OkxWsContext";
 import { useKrakenWs } from "../contexts/KrakenWsContext";
 import { useGeminiWs } from "../contexts/GeminiWsContext";
@@ -11,6 +11,7 @@ import { OrderPanel } from "./OrderPanel";
 
 interface Props {
   config: RowConfig;
+  pairOptions: ExchangePairOptions;
   onAddPair: (exchange: Exchange, pair: string) => void;
   onRemovePair: (exchange: Exchange, pair: string) => void;
 }
@@ -20,7 +21,7 @@ interface SelectedTicker {
   pair: string;
 }
 
-export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
+export function Dashboard({ config, pairOptions, onAddPair, onRemovePair }: Props) {
   const queryClient = useQueryClient();
   const okxWs = useOkxWs();
   const krakenWs = useKrakenWs();
@@ -31,8 +32,7 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
     for (const pair of config.exchanges.okx) okxWs.subscribe(pair);
     for (const pair of config.exchanges.kraken) krakenWs.subscribe(pair);
     for (const pair of config.exchanges.gemini) geminiWs.subscribe(pair);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [config.exchanges.gemini, config.exchanges.kraken, config.exchanges.okx, geminiWs, krakenWs, okxWs]);
 
   function handleAdd(exchange: Exchange, pair: string) {
     onAddPair(exchange, pair);
@@ -78,6 +78,7 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
     <>
       <RowConfigPanel
         configuredPairs={config.exchanges}
+        pairOptions={pairOptions}
         onAdd={handleAdd}
       />
 

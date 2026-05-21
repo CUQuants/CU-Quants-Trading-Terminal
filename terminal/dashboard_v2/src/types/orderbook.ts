@@ -60,14 +60,6 @@ export interface OkxBookMessage {
   data: OkxBookData[];
 }
 
-// --- Exchange symbol configuration ---
-
-export const EXCHANGE_SYMBOLS: Record<Exchange, string[]> = {
-  kraken: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
-  okx: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
-  gemini: ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD"],
-};
-
 /**
  * Exchanges that have a backend relay at localhost:8000
  * (order events WS, REST orders, account endpoints).
