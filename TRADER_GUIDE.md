@@ -6,7 +6,7 @@ This guide explains how to run the trading terminal, configure OKX credentials, 
 
 ## Quick Start (Docker)
 
-From the `terminal` directory:
+From the repo root:
 
 ```bash
 docker compose up --build
@@ -19,7 +19,7 @@ docker compose up --build
 
 ## OKX Environment Variables
 
-Create a `.env` file in `terminal/backend/` with the following keys.
+Create a `.env` file in `backend/` with the following keys.
 
 ### Live Trading
 
@@ -85,14 +85,13 @@ docker compose version
 
 ### Running the Terminal
 
-You must be in the `terminal` directory when running Docker Compose, since it looks for `docker-compose.yml` in the current folder:
+Run Docker Compose from the repo root, since it looks for `docker-compose.yml` in the current folder:
 
 ```bash
-cd terminal
 docker compose up --build
 ```
 
-If you’re already in the project root, use `cd terminal` first. Once running, the frontend is at http://localhost:3000 and the backend at http://localhost:8000.
+Once running, the frontend is at http://localhost:3000 and the backend at http://localhost:8000.
 
 ### Common Commands
 
