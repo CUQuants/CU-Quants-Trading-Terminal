@@ -7,7 +7,7 @@ A web-based trading terminal for connecting to and trading on multiple crypto ex
 ```
 .
 ├── backend/          FastAPI service — exchange integrations, orders, trades, account data
-├── dashboard_v2/      React + Vite dashboard — the UI
+├── frontend/          React + Vite dashboard — the UI
 ├── docker-compose.yml
 ├── TRADER_GUIDE.md   Setup, environment variables, and Docker usage
 └── docs/             Design notes and specs
@@ -26,16 +26,16 @@ See [TRADER_GUIDE.md](./TRADER_GUIDE.md) for exchange API credentials, environme
 
 ## Running without Docker
 
-**Backend**
+**Backend** (uses [uv](https://docs.astral.sh/uv/) for dependency management)
 ```bash
 cd backend
-pip install -r requirements.txt
-uvicorn app:app --reload --host 0.0.0.0 --port 8000
+uv sync
+uv run uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **Dashboard**
 ```bash
-cd dashboard_v2
+cd frontend
 npm install
 npm run dev
 ```

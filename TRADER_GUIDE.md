@@ -19,7 +19,7 @@ docker compose up --build
 
 ## OKX Environment Variables
 
-Create a `.env` file in `backend/` with the following keys.
+Create a `.env` file in `backend/` with the following keys (see `backend/.env.example` for a template).
 
 ### Live Trading
 
@@ -117,7 +117,7 @@ Once running, the frontend is at http://localhost:3000 and the backend at http:/
 
 The dashboard uses `VITE_API_URL` to reach the backend. Default: `http://localhost:8000`.
 
-If your backend runs elsewhere (e.g. another host or port), create `dashboard_v2/.env`:
+If your backend runs elsewhere (e.g. another host or port), create `frontend/.env`:
 
 ```env
 VITE_API_URL=http://your-backend-host:8000
