@@ -1,17 +1,12 @@
-import logging
-import os
-import hmac
-import hashlib
-import base64
-import json
 import asyncio
-from datetime import datetime, timezone
+import logging
 from typing import Dict, List, Optional
 
-from dotenv import load_dotenv
-load_dotenv()
+from proxy_client import new_idempotency_key
+from proxy_client.errors import ExchangeError, ProxyError
 
 from exchange_services.exchange import ExchangeService
+from exchange_services.proxy_session import ProxySession
 from exchange_services.okx_order_stream import OkxOrderEventStream
 from models import (
     PlaceOrderRequest,
@@ -25,59 +20,32 @@ from models import (
     PositionEntry,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class OkxService(ExchangeService):
+    """OKX spot service, routed entirely through the CU Quants Proxy.
 
-    def __init__(self, base_url: str = "https://us.okx.com", simulated: bool = False):
-        super().__init__(base_url)
-        if simulated:
-            self.api_key = os.getenv("OKX_API_KEY_SIMULATED", "")
-            self.api_secret = os.getenv("OKX_API_SECRET_SIMULATED", "")
-            self.passphrase = os.getenv("OKX_API_PASSPHRASE_SIMULATED", "")
-        else:
-            self.api_key = os.getenv("OKX_API_KEY", "")
-            self.api_secret = os.getenv("OKX_API_SECRET", "")
-            self.passphrase = os.getenv("OKX_API_PASSPHRASE", "")
-        self.simulated = simulated
-        self._us = "us.okx.com" in base_url
+    The terminal holds no OKX credentials — every call here is
+    `self._proxy.call("okx", <action>, <payload>)`, where the Proxy signs
+    with the club's vaulted key, enforces the §4.2 allowlist and the
+    spot-only rule, and logs the request. Payloads are OKX's own field
+    names (`instId`, `tdMode`, `sz`, ...) and responses come back as OKX's
+    own body (`{"code": "0", "data": [...]}`), so the parsing below is
+    unchanged from when this service signed its own requests.
+
+    Simulated vs. live is a property of the gateway `self._proxy` points at
+    (`OKX_SIMULATED` there), not a setting on this class.
+    """
+
+    def __init__(self, proxy: ProxySession):
+        super().__init__()
+        self._proxy = proxy
         self._order_stream: OkxOrderEventStream | None = None
-
-    # ------------------------------------------------------------------
-    # Auth / signing (REST)
-    # ------------------------------------------------------------------
-
-    def _get_timestamp(self) -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-    def _sign(self, timestamp: str, method: str, request_path: str, body: str = "") -> str:
-        prehash = timestamp + method.upper() + request_path + body
-        signature = hmac.new(
-            self.api_secret.encode(),
-            prehash.encode(),
-            hashlib.sha256,
-        ).digest()
-        return base64.b64encode(signature).decode()
-
-    def _get_headers(self, method: str, request_path: str, body: str = "") -> dict:
-        timestamp = self._get_timestamp()
-        sign = self._sign(timestamp, method, request_path, body)
-        return {
-            "OK-ACCESS-KEY": self.api_key,
-            "OK-ACCESS-SIGN": sign,
-            "OK-ACCESS-TIMESTAMP": timestamp,
-            "OK-ACCESS-PASSPHRASE": self.passphrase,
-            "Content-Type": "application/json",
-            "x-simulated-trading": "1" if self.simulated else "0",
-        }
 
     # ------------------------------------------------------------------
     # Pair normalization
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_query_string(params: dict) -> str:
-        parts = [f"{k}={v}" for k, v in params.items() if v is not None and v != ""]
-        return "?" + "&".join(parts) if parts else ""
 
     def _to_native_pair(self, pair: str) -> str:
         """BTC/USD -> BTC-USDT"""
@@ -107,11 +75,34 @@ class OkxService(ExchangeService):
     # REST: orders
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _order_error_message(data: dict) -> str:
+        """Pull a human error string out of an OKX order-rejection body.
+
+        `data` is OKX's own `{"code", "msg", "data": [{"sCode", "sMsg"}]}`
+        — via `ExchangeError.detail["body"]` when the Proxy relays a
+        rejection.
+        """
+        err_msg = (data.get("msg") or "").strip()
+        details = data.get("data") or []
+        if details and isinstance(details[0], dict):
+            d0 = details[0]
+            s_msg = (d0.get("sMsg") or "").strip()
+            s_code = d0.get("sCode", "")
+            if s_msg:
+                err_msg = s_msg
+            elif s_code:
+                err_msg = err_msg or f"Order failed (sCode={s_code})"
+        if not err_msg:
+            code = data.get("code", "")
+            err_msg = f"Order failed (code={code})" if code else "Order failed"
+            logger.warning("OKX order rejected, could not parse error: %s", data)
+        return err_msg
+
     async def place_order(
         self, request: PlaceOrderRequest
     ) -> tuple[Optional[OrderResponse], Optional[str]]:
-        request_path = "/api/v5/trade/order"
-        body_dict = {
+        payload = {
             "instId": self._to_native_pair(request.pair),
             "tdMode": "cash",
             "side": request.side,
@@ -119,32 +110,18 @@ class OkxService(ExchangeService):
             "sz": str(request.size),
         }
         if request.type == "limit" and request.price is not None:
-            body_dict["px"] = str(request.price)
-
-        body = json.dumps(body_dict)
-        headers = self._get_headers("POST", request_path, body)
+            payload["px"] = str(request.price)
 
         try:
-            data = await self._request("POST", request_path, body=body, headers=headers)
-        except Exception as e:
+            data = await self._proxy.call(
+                "okx", "place_order", payload,
+                idempotency_key=new_idempotency_key(),
+            )
+        except ExchangeError as e:
+            body = (e.detail or {}).get("body") or {}
+            return (None, self._order_error_message(body))
+        except ProxyError as e:
             return (None, str(e))
-
-        if data.get("code") != "0":
-            err_msg = (data.get("msg") or "").strip()
-            details = data.get("data") or []
-            if details and isinstance(details[0], dict):
-                d0 = details[0]
-                s_msg = (d0.get("sMsg") or "").strip()
-                s_code = d0.get("sCode", "")
-                if s_msg:
-                    err_msg = s_msg
-                elif s_code:
-                    err_msg = err_msg or f"Order failed (sCode={s_code})"
-            if not err_msg:
-                code = data.get("code", "")
-                err_msg = f"Order failed (code={code})" if code else "Order failed"
-                logging.getLogger(__name__).warning("OKX order rejected, could not parse error: %s", data)
-            return (None, err_msg)
 
         order_id = data["data"][0]["ordId"]
         order = OrderResponse(
@@ -160,16 +137,11 @@ class OkxService(ExchangeService):
         return (order, None)
 
     async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
-        base_path = "/api/v5/trade/orders-pending"
-        params: dict = {"instType": "SPOT"}
+        payload: dict = {"instType": "SPOT"}
         if pair:
-            params["instId"] = self._to_native_pair(pair)
+            payload["instId"] = self._to_native_pair(pair)
 
-        query = self._build_query_string(params)
-        request_path = base_path + query
-        headers = self._get_headers("GET", request_path)
-
-        data = await self._request("GET", request_path, headers=headers)
+        data = await self._proxy.call("okx", "get_pending_orders", payload)
 
         orders: List[OrderResponse] = []
         for item in data.get("data", []):
@@ -187,16 +159,13 @@ class OkxService(ExchangeService):
         return orders
 
     async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
-        base_path = "/api/v5/trade/fills-history"
-        params: dict = {"instType": "SPOT", "limit": str(limit)}
+        payload: dict = {"instType": "SPOT", "limit": str(limit)}
         if pair:
-            params["instId"] = self._to_native_pair(pair)
+            payload["instId"] = self._to_native_pair(pair)
 
-        query = self._build_query_string(params)
-        request_path = base_path + query
-        headers = self._get_headers("GET", request_path)
-
-        data = await self._request("GET", request_path, headers=headers)
+        # `get_fills` on the Proxy is OKX's /api/v5/trade/fills (last 3 days).
+        # The older /fills-history window isn't on the §4.2 allowlist.
+        data = await self._proxy.call("okx", "get_fills", payload)
 
         trades: List[TradeResponse] = []
         for item in data.get("data", []):
@@ -217,15 +186,18 @@ class OkxService(ExchangeService):
         return trades
 
     async def cancel_order(self, order_id: str, pair: str) -> bool:
-        request_path = "/api/v5/trade/cancel-order"
-        body_dict = {
+        payload = {
             "ordId": order_id,
             "instId": self._to_native_pair(pair),
         }
-        body = json.dumps(body_dict)
-        headers = self._get_headers("POST", request_path, body)
-
-        result = await self._request("POST", request_path, body=body, headers=headers)
+        try:
+            result = await self._proxy.call(
+                "okx", "cancel_order", payload,
+                idempotency_key=new_idempotency_key(),
+            )
+        except ProxyError as e:
+            logger.warning("OKX cancel_order failed: %s", e)
+            return False
         return result.get("code") == "0"
 
     # ------------------------------------------------------------------
@@ -234,9 +206,7 @@ class OkxService(ExchangeService):
 
     async def _fetch_all_balances(self) -> Dict[str, dict]:
         """Fetch full account balance from OKX (no ccy filter), filter in memory."""
-        request_path = "/api/v5/account/balance"
-        headers = self._get_headers("GET", request_path)
-        data = await self._request("GET", request_path, headers=headers)
+        data = await self._proxy.call("okx", "get_balance", {})
 
         if data.get("code") != "0":
             raise Exception(f"OKX balance failed: {data}")
@@ -330,11 +300,7 @@ class OkxService(ExchangeService):
         if self._order_stream is not None:
             return
         self._order_stream = OkxOrderEventStream(
-            api_key=self.api_key,
-            api_secret=self.api_secret,
-            passphrase=self.passphrase,
-            simulated=self.simulated,
-            us=self._us,
+            proxy=self._proxy,
             pair_normalizer=self._from_native_pair,
         )
         await self._order_stream.start(event_queue)

@@ -68,6 +68,7 @@ name = "cu-quants-trading-terminal-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "cuq-proxy-client", extra = ["websocket"] },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -84,6 +85,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cuq-proxy-client", extras = ["websocket"], editable = "../../proxy-client" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
@@ -97,6 +99,29 @@ dev = [
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
 ]
+
+[[package]]
+name = "cuq-proxy-client"
+version = "0.3.0"
+source = { editable = "../../proxy-client" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.optional-dependencies]
+websocket = [
+    { name = "websockets" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "build", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
+    { name = "websockets", marker = "extra == 'dev'", specifier = ">=13" },
+    { name = "websockets", marker = "extra == 'websocket'", specifier = ">=13" },
+]
+provides-extras = ["websocket", "dev"]
 
 [[package]]
 name = "fastapi"
