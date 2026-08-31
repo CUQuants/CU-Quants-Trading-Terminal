@@ -17,50 +17,51 @@ docker compose up --build
 
 ---
 
-## OKX Environment Variables
+## Environment Variables
 
-Create a `.env` file in `backend/` with the following keys (see `backend/.env.example` for a template).
+Create a `.env` file in `backend/` (see `backend/.env.example` for a template).
 
-### Live Trading
+### OKX — through the CU Quants Proxy
 
-| Variable | Description |
-|----------|-------------|
-| `OKX_API_KEY` | Your OKX API key (live) |
-| `OKX_API_SECRET` | Your OKX API secret (live) |
-| `OKX_API_PASSPHRASE` | The passphrase you set when creating the API key |
-
-### Simulated / Demo Trading
-
-When `SIMULATED=True`, the backend uses these keys instead. Use OKX’s demo/simulated trading credentials.
+The terminal holds **no OKX keys**. Every OKX call goes through the CU Quants
+Trading Gateway ("the Proxy"), which holds the club's vaulted OKX key, enforces
+the action allowlist, and audits every request. You need an **operator
+credential** from the Proxy (see `trading-gateway/NEW-USER.md`).
 
 | Variable | Description |
 |----------|-------------|
-| `OKX_API_KEY_SIMULATED` | OKX demo API key |
-| `OKX_API_SECRET_SIMULATED` | OKX demo API secret |
-| `OKX_API_PASSPHRASE_SIMULATED` | Passphrase for the demo API key |
+| `CUQ_PROXY_URL` | Base URL of the gateway, e.g. `https://your-gateway-host.example` |
+| `CUQ_PROXY_API_KEY` | Your operator API key (`cuq_op_...`) |
+| `CUQ_PROXY_SECRET` | The secret paired with that key — read at startup, never stored |
+| `CUQ_PROXY_OPERATOR_ID` | Your operator id, e.g. `cuq-014` |
+| `CUQ_PROXY_OPERATOR_NAME` | Your name, for the audit log |
+| `CUQ_PROXY_WS_URL` | *(optional)* explicit `wss://` base; omit to derive it from `CUQ_PROXY_URL` |
 
-### Dev Mode Flag: `SIMULATED`
+### Simulated vs. live
 
-| Value | Behavior |
-|-------|----------|
-| `SIMULATED=True` | Uses `*_SIMULATED` keys and OKX’s demo WebSocket (`wss://wsuspap.okx.com`). No real orders or funds. |
-| `SIMULATED=False` | Uses live keys and live OKX endpoints. Real orders and real funds. |
+There is **no `SIMULATED` flag in the terminal any more.** Whether an order
+reaches OKX's demo environment or the real one is decided by `OKX_SIMULATED` on
+the gateway that `CUQ_PROXY_URL` points at, with demo credentials vaulted there.
+To test against OKX's simulated environment, run a local gateway in that mode
+(`OKX_SIMULATED=1` + OKX demo keys — see `trading-gateway/SANDBOX_INTEGRATION.md`)
+and point `CUQ_PROXY_URL` at it.
+
+### Kraken
+
+Still called directly with `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` until its own
+migration onto the Proxy.
 
 **Example `.env`:**
 
 ```env
-# Live credentials (used when SIMULATED=False)
-OKX_API_KEY=your-live-api-key
-OKX_API_SECRET=your-live-api-secret
-OKX_API_PASSPHRASE=your-passphrase
+CUQ_PROXY_URL=http://localhost:8100
+CUQ_PROXY_API_KEY=cuq_op_...
+CUQ_PROXY_SECRET=...
+CUQ_PROXY_OPERATOR_ID=cuq-014
+CUQ_PROXY_OPERATOR_NAME=J. Rivera
 
-# Demo credentials (used when SIMULATED=True)
-OKX_API_KEY_SIMULATED=your-demo-api-key
-OKX_API_SECRET_SIMULATED=your-demo-api-secret
-OKX_API_PASSPHRASE_SIMULATED=your-demo-passphrase
-
-# Set to True for paper trading, False for live
-SIMULATED=True
+KRAKEN_API_KEY=...
+KRAKEN_API_SECRET=...
 ```
 
 **Security:** Never commit `.env` or share your keys. `.env` is in `.gitignore`.
@@ -127,7 +128,7 @@ VITE_API_URL=http://your-backend-host:8000
 
 ## Troubleshooting
 
-- **Backend won’t start:** Ensure `backend/.env` exists and contains valid OKX keys.
+- **Backend won’t start:** Ensure `backend/.env` exists and sets all five `CUQ_PROXY_*` variables. A missing one aborts startup with a message naming it. Also confirm the gateway at `CUQ_PROXY_URL` is reachable.
 - **Frontend can’t reach backend:** Check `VITE_API_URL` and that the backend is running on that URL.
 - **Docker build fails:** Run `docker compose down` and `docker compose up --build` again.
 - **Port already in use:** Stop other services on 3000 or 8000, or change ports in `docker-compose.yml`.

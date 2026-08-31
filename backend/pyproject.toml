@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.10.0",
     "python-dotenv>=1.0.0",
     "websockets>=14.0",
+    "cuq-proxy-client[websocket]",
 ]
 
 [dependency-groups]
@@ -20,3 +21,9 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+# Local sibling checkout for development against this flat workspace.
+# Swap for a pinned git rev before merging, e.g.
+#   cuq-proxy-client = { git = "https://github.com/CUQuants/proxy-client.git", rev = "d82260e" }
+cuq-proxy-client = { path = "../../proxy-client", editable = true }

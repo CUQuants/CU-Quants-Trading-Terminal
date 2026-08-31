@@ -45,4 +45,4 @@ npm run dev
 - Streams live order books and trades from OKX, Kraken, and Gemini
 - Places and cancels orders, and tracks order status over a websocket relay
 - Shows account balances and positions per exchange
-- Supports simulated/demo trading mode for OKX
+- Routes all OKX trading through the CU Quants Proxy (no exchange keys held by the terminal); simulated vs. live is a property of the gateway it points at

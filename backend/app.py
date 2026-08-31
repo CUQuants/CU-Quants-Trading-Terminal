@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
     yield
 
     await relay.shutdown()
+    await service_container.aclose()
 
 
 app = FastAPI(lifespan=lifespan)
