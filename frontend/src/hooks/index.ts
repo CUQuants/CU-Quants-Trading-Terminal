@@ -9,3 +9,7 @@ export { useAvailableCash } from "./useAvailableCash";
 export { useAvailablePositions } from "./useAvailablePositions";
 export { useAccountBalances } from "./useAccountBalances";
 export { useAccountPositions } from "./useAccountPositions";
+export { useLogHealth } from "./useLogHealth";
+export { useUnresolvedOrders } from "./useUnresolvedOrders";
+export { useAuthFailures } from "./useAuthFailures";
+export { useLogs } from "./useLogs";
