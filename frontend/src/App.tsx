@@ -11,6 +11,7 @@ import { DashboardHeader, type View } from "./components/DashboardHeader";
 import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
+import { ReportingView } from "./components/ReportingView";
 
 function App() {
   const { config, addPair, removePair } = useRowConfig();
@@ -59,6 +60,7 @@ function App() {
               {currentView === "account" && (
                 <AccountView activeExchanges={activeExchanges} />
               )}
+              {currentView === "reporting" && <ReportingView />}
             </div>
           </ActiveOrdersProvider>
           </GeminiWsProvider>
