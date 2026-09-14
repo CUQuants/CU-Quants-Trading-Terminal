@@ -37,6 +37,21 @@ credential** from the Proxy (see `trading-gateway/NEW-USER.md`).
 | `CUQ_PROXY_OPERATOR_NAME` | Your name, for the audit log |
 | `CUQ_PROXY_WS_URL` | *(optional)* explicit `wss://` base; omit to derive it from `CUQ_PROXY_URL` |
 
+### Audit reporting (optional)
+
+The **Reporting** tab reads the gateway's read-only audit-log API
+(`proxy_admin.reporting` — a separate process from the Proxy, its own port,
+no reverse-proxy route). It reuses the same `CUQ_PROXY_*` operator
+credential above; only the URL is new, and your operator needs
+`admin_role='auditor'` on the gateway (ask whoever issued your credential).
+
+| Variable | Description |
+|----------|-------------|
+| `CUQ_REPORTING_URL` | *(optional)* base URL of the reporting API, e.g. `https://your-reporting-host.example` |
+
+Leave it unset and the backend still starts normally — the Reporting tab
+just shows "not configured" instead of data.
+
 ### Simulated vs. live
 
 There is **no `SIMULATED` flag in the terminal any more.** Whether an order
@@ -129,6 +144,8 @@ VITE_API_URL=http://your-backend-host:8000
 ## Troubleshooting
 
 - **Backend won’t start:** Ensure `backend/.env` exists and sets all five `CUQ_PROXY_*` variables. A missing one aborts startup with a message naming it. Also confirm the gateway at `CUQ_PROXY_URL` is reachable.
+- **Reporting tab shows "not configured" (`503`):** `CUQ_REPORTING_URL` is unset — this is expected until you add it; it does not stop the rest of the terminal from working.
+- **Reporting tab / API returns `403 ACTION_NOT_PERMITTED`:** your operator authenticated fine but isn't authorized to view the audit log — ask whoever issued your credential to grant `admin_role='auditor'`.
 - **Frontend can’t reach backend:** Check `VITE_API_URL` and that the backend is running on that URL.
 - **Docker build fails:** Run `docker compose down` and `docker compose up --build` again.
 - **Port already in use:** Stop other services on 3000 or 8000, or change ports in `docker-compose.yml`.

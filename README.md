@@ -46,3 +46,4 @@ npm run dev
 - Places and cancels orders, and tracks order status over a websocket relay
 - Shows account balances and positions per exchange
 - Routes all OKX trading through the CU Quants Proxy (no exchange keys held by the terminal); simulated vs. live is a property of the gateway it points at
+- Optional **Reporting** tab: browse/filter the gateway's audit log (health, unresolved orders, auth failures, filtered log search) via the read-only `proxy_admin.reporting` API
