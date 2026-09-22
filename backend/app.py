@@ -5,10 +5,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from exchange_services.service_container import ServiceContainer
+from news.claude import ClaudeClient
+from news.service import NewsEventProcessor
 from order_event_relay import OrderEventRelay
 from routes.orders import router as orders_router
 from routes.trades import router as trades_router
 from routes.account import router as account_router
+from routes.news_events import router as news_events_router
 from routes.reporting import router as reporting_router
 
 logging.basicConfig(level=logging.INFO)
@@ -25,13 +28,16 @@ uv run uvicorn app:app --reload --host 0.0.0.0 --port 8000
 async def lifespan(app: FastAPI):
     service_container = ServiceContainer()
     relay = OrderEventRelay(service_container)
+    news_event_processor = NewsEventProcessor(ClaudeClient.from_env())
 
     app.state.service_container = service_container
     app.state.order_event_relay = relay
+    app.state.news_event_processor = news_event_processor
 
     yield
 
     await relay.shutdown()
+    await news_event_processor.aclose()
     await service_container.aclose()
 
 
@@ -49,6 +55,7 @@ app.include_router(orders_router)
 app.include_router(trades_router)
 app.include_router(account_router)
 app.include_router(reporting_router)
+app.include_router(news_events_router)
 
 
 @app.get("/")
