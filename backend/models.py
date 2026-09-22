@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Optional, List
+from typing import Any, Literal, Optional, List
 
 
 class PlaceOrderRequest(BaseModel):
@@ -105,3 +105,65 @@ class AllPositionsResponse(BaseModel):
     """All positions for an exchange (non-zero, non-cash)."""
     exchange: str
     positions: List[PositionEntry]
+
+
+# --- Reporting (audit log) ---
+# Field shapes mirror proxy_client.ReportingClient's docstrings, confirmed
+# against trading-gateway/proxy_admin/proxy_admin/reporting/db.py's
+# UnresolvedOrder / LogHealth / AuthFailureSummary / LogRow dataclasses.
+
+class LogHealthResponse(BaseModel):
+    """Partition runway, clock skew, default-partition drift."""
+    months_of_runway: int
+    default_partition_rows: int
+    unprotected_partitions: int
+    rows_last_24h: int
+    newest_row: Optional[str] = None
+    max_clock_skew_sec: Optional[float] = None
+
+
+class UnresolvedOrderResponse(BaseModel):
+    """An order forwarded to an exchange whose outcome was never recorded."""
+    request_id: str
+    timestamp: str
+    operator_id: Optional[str] = None
+    operator_name: Optional[str] = None
+    system_name: Optional[str] = None
+    exchange: Optional[str] = None
+    action: str
+    source_ip: Optional[str] = None
+    unresolved_for: str
+
+
+class AuthFailureResponse(BaseModel):
+    """Authentication failures in the last 7 days, by key and origin."""
+    api_key_id: Optional[str] = None
+    source_ip: Optional[str] = None
+    failures: int
+    latest: str
+
+
+class LogEntryResponse(BaseModel):
+    """One row of request_log."""
+    request_id: str
+    action: str
+    response_status: Optional[str] = None
+    timestamp: str
+    operator_id: Optional[str] = None
+    operator_name: Optional[str] = None
+    system_name: Optional[str] = None
+    exchange: Optional[str] = None
+    request_payload: Optional[Any] = None
+    response_summary: Optional[Any] = None
+    latency_ms: Optional[int] = None
+    source_ip: Optional[str] = None
+    order_id: Optional[str] = None
+    http_status: Optional[int] = None
+    error_code: Optional[str] = None
+    api_key_id: Optional[str] = None
+
+
+class LogPageResponse(BaseModel):
+    """One filtered/paginated page of request_log."""
+    logs: List[LogEntryResponse]
+    next_cursor: Optional[str] = None

@@ -11,6 +11,7 @@ import { DashboardHeader, type View } from "./components/DashboardHeader";
 import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
+import { ReportingView } from "./components/ReportingView";
 import { NewsView } from "./components/NewsView";
 import { NewsErrorBoundary } from "./components/news/NewsErrorBoundary";
 import { DEFAULT_NEWS_VIEW_STATE } from "./types/news";
@@ -67,6 +68,7 @@ function App() {
               {currentView === "account" && (
                 <AccountView activeExchanges={activeExchanges} />
               )}
+              {currentView === "reporting" && <ReportingView />}
               {currentView === "news" && (
                 <NewsErrorBoundary>
                   <NewsView configuredPairs={configuredNewsPairs} state={newsState} onStateChange={setNewsState} />

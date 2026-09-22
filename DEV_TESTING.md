@@ -99,6 +99,38 @@ market (e.g. `0.001 @ 1000`) so it rests. Expect:
 
 It's OKX's demo book — no real funds move.
 
+## 6 — Query the audit log (optional)
+
+The gateway's read-only audit-reporting API is a separate process on its
+own port. In a third shell:
+
+```bash
+cd ../trading-gateway
+scripts/dev-gateway.sh report
+```
+
+Add one line to `backend/.env` — the existing `CUQ_PROXY_*` operator
+credential already has `admin_role='auditor'` (`dev-gateway.sh`'s
+`seed_registry`), so no new credential is needed:
+
+```
+CUQ_REPORTING_URL=http://127.0.0.1:8090
+```
+
+Restart `scripts/dev-local.sh` (or just the backend) to pick it up, then:
+
+```bash
+curl -s localhost:8000/reporting/health | head -c 400
+curl -s "localhost:8000/reporting/logs?limit=5"
+```
+
+A JSON body means the chain works end to end. Place an order (step 5) and
+it shows up in `/reporting/logs` immediately, and in
+`/reporting/unresolved` if OKX's ack/fill hasn't come back yet. In the
+dashboard, open the **Reporting** tab for the same views with filters.
+Leaving `CUQ_REPORTING_URL` unset is fine — trading still works, and
+`/reporting/*` returns `503` instead.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |

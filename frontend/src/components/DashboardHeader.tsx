@@ -3,7 +3,7 @@ import { useKrakenWs } from "../contexts/KrakenWsContext";
 import { useOrderEvents } from "../contexts/OrderEventsContext";
 import quantsLogo from "../assets/quants_dark.png";
 
-export type View = "dashboard" | "trades" | "account" | "news";
+export type View = "dashboard" | "trades" | "account" | "reporting" | "news";
 
 const STATUS_COLORS: Record<string, string> = {
   connected: "bg-green-500 shadow-[0_0_6px_theme(colors.green.500)]",
@@ -84,6 +84,11 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
             label="Account"
             active={currentView === "account"}
             onClick={() => onViewChange("account")}
+          />
+          <TabButton
+            label="Reporting"
+            active={currentView === "reporting"}
+            onClick={() => onViewChange("reporting")}
           />
           <TabButton
             label="News"
