@@ -47,3 +47,6 @@ npm run dev
 - Shows account balances and positions per exchange
 - Routes all OKX trading through the CU Quants Proxy (no exchange keys held by the terminal); simulated vs. live is a property of the gateway it points at
 - Optional **Reporting** tab: browse/filter the gateway's audit log (health, unresolved orders, auth failures, filtered log search) via the read-only `proxy_admin.reporting` API
+- **News API**: cached financial and crypto articles at `/news`, with five-minute
+  refreshes and provider health at `/news/status`. See
+  [backend/README.md](./backend/README.md) for provider setup and query parameters.
