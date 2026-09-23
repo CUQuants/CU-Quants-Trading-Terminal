@@ -53,6 +53,14 @@ collaborators to verify the new wiring; they do not conceal this dependency
 problem or prove full trading-app integration. No reporting or SDK implementation
 was changed.
 
+## Integration update
+
+In the separate `integration/news-hub-frontend` worktree, the backend article
+and status projections were aligned with the frontend PR's `/news` contract:
+feed envelopes, camelCase article fields, `pair` and `timeframe` queries, and
+frontend source/category/AI status fields. `/news/events` remains intentionally
+unimplemented pending an event-grouping and validated-insight design.
+
 ## Operational boundaries
 
 - Set provider credentials in `backend/.env`; install Yahoo with
