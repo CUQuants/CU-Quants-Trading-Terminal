@@ -56,8 +56,28 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
   fi
 fi
 
-# --- run both; kill the whole process group on exit --------------------------
-trap 'kill 0' EXIT INT TERM
+# --- ports free? (a leftover backend from a closed tab is the usual culprit) --
+for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
+  pids="$(lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null || true)"
+  [ -z "$pids" ] && continue
+  procs="$(ps -o pid=,command= -p "$(echo $pids | tr ' ' ,)" 2>/dev/null || true)"
+  die "port $port already in use by:
+$procs
+  stop it with:  lsof -ti tcp:$port | xargs kill"
+done
+
+# --- run both; stop the whole process group on exit and wait for it ----------
+# `kill 0` also signals this script, so ignore our own signals first; then
+# `wait` so the prompt only returns once uvicorn/vite have actually exited
+# (otherwise closing the tab mid-shutdown can orphan the backend on :8000).
+cleanup() {
+  trap '' INT TERM HUP
+  trap - EXIT
+  kill 0 2>/dev/null || true
+  wait 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
 
 log "backend  -> http://127.0.0.1:$BACKEND_PORT   (routes OKX through $GW)"
 ( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) &

@@ -73,7 +73,8 @@ retained. There is no persistent cross-refresh duplicate history.
 ## Refresh, cache, and health
 
 `NewsService` starts immediately in the FastAPI lifespan and schedules another
-refresh every 300 seconds. It fetches enabled providers concurrently, prevents
+refresh every 300 seconds, or every `NEWS_REFRESH_SECONDS` if set (at least 30
+and below the one-hour cache TTL; invalid values log a warning and use 300). It fetches enabled providers concurrently, prevents
 overlapping refreshes, and cancels the task and closes its HTTP pool on shutdown.
 Upstream HTTP requests have an eight-second timeout; each provider has a
 30-second overall budget. Yahoo's blocking library runs outside the event loop

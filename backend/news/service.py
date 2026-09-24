@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import math
+import os
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +15,29 @@ from news.providers import NewsProvider, ProviderResult, build_providers
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_REFRESH_INTERVAL = 300.0
+_MIN_REFRESH_INTERVAL = 30.0
+
+
+def _refresh_interval_from_env(cache_ttl: float) -> float:
+    """Read NEWS_REFRESH_SECONDS; fall back to the default rather than fail startup."""
+    raw = os.environ.get("NEWS_REFRESH_SECONDS", "").strip()
+    if not raw:
+        return _DEFAULT_REFRESH_INTERVAL
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    # Below the minimum burns provider quotas; at or above the TTL the cache
+    # empties before the next refresh can repopulate it.
+    if not math.isfinite(value) or not _MIN_REFRESH_INTERVAL <= value < cache_ttl:
+        logger.warning(
+            "Ignoring NEWS_REFRESH_SECONDS=%r (must be >= %g and < %g); using %g",
+            raw, _MIN_REFRESH_INTERVAL, cache_ttl, _DEFAULT_REFRESH_INTERVAL,
+        )
+        return _DEFAULT_REFRESH_INTERVAL
+    return value
+
 
 class NewsService:
     """One service per app lifespan; requests never fetch from upstream providers."""
@@ -22,11 +47,13 @@ class NewsService:
         providers: list[NewsProvider] | None = None,
         *,
         client: httpx.AsyncClient | None = None,
-        refresh_interval: float = 300,
+        refresh_interval: float | None = None,
         provider_timeout: float = 30,
         cache_ttl: float = 3600,
         max_articles: int = 500,
     ) -> None:
+        if refresh_interval is None:
+            refresh_interval = _refresh_interval_from_env(cache_ttl)
         if min(refresh_interval, provider_timeout, cache_ttl, max_articles) <= 0:
             raise ValueError("News intervals and cache limits must be positive")
         self._owns_client = providers is None and client is None
