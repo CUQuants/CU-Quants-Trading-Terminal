@@ -3,7 +3,7 @@ import { useKrakenWs } from "../contexts/KrakenWsContext";
 import { useOrderEvents } from "../contexts/OrderEventsContext";
 import quantsLogo from "../assets/quants_dark.png";
 
-export type View = "dashboard" | "trades" | "account" | "reporting";
+export type View = "dashboard" | "trades" | "account" | "reporting" | "news";
 
 const STATUS_COLORS: Record<string, string> = {
   connected: "bg-green-500 shadow-[0_0_6px_theme(colors.green.500)]",
@@ -57,8 +57,8 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
   const { orderEventsStatus } = useOrderEvents();
 
   return (
-    <header className="flex justify-between items-center px-6 py-4 border-b border-white/10 bg-gradient-to-r from-white/[0.03] to-transparent">
-      <div className="flex items-center gap-6">
+    <header className="flex flex-wrap justify-between items-center gap-4 px-6 py-4 border-b border-white/10 bg-gradient-to-r from-white/[0.03] to-transparent">
+      <div className="flex flex-wrap items-center gap-6">
         <div className="flex items-center gap-3">
           <img src={quantsLogo} alt="" className="h-9 w-auto object-contain" />
           <div className="flex flex-col gap-0.5">
@@ -90,10 +90,15 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
             active={currentView === "reporting"}
             onClick={() => onViewChange("reporting")}
           />
+          <TabButton
+            label="News"
+            active={currentView === "news"}
+            onClick={() => onViewChange("news")}
+          />
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex flex-wrap items-center gap-6">
         <div className="flex items-center gap-3 bg-white/[0.03] rounded-lg px-3 py-1.5 border border-white/5">
           <span className="text-[10px] uppercase tracking-widest text-white/30 mr-1">
             Book

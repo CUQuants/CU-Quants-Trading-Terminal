@@ -12,10 +12,18 @@ import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
 import { ReportingView } from "./components/ReportingView";
+import { NewsView } from "./components/NewsView";
+import { NewsErrorBoundary } from "./components/news/NewsErrorBoundary";
+import { DEFAULT_NEWS_VIEW_STATE } from "./types/news";
 
 function App() {
   const { config, addPair, removePair } = useRowConfig();
   const [currentView, setCurrentView] = useState<View>("dashboard");
+  const [newsState, setNewsState] = useState(DEFAULT_NEWS_VIEW_STATE);
+  const configuredNewsPairs = useMemo(
+    () => [...new Set(Object.values(config.exchanges).flat())].sort(),
+    [config.exchanges],
+  );
 
   const activeExchanges = useMemo<Exchange[]>(() => {
     const result: Exchange[] = [];
@@ -61,6 +69,11 @@ function App() {
                 <AccountView activeExchanges={activeExchanges} />
               )}
               {currentView === "reporting" && <ReportingView />}
+              {currentView === "news" && (
+                <NewsErrorBoundary>
+                  <NewsView configuredPairs={configuredNewsPairs} state={newsState} onStateChange={setNewsState} />
+                </NewsErrorBoundary>
+              )}
             </div>
           </ActiveOrdersProvider>
           </GeminiWsProvider>
