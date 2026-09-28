@@ -114,7 +114,7 @@ credential already has `admin_role='auditor'` (`dev-gateway.sh`'s
 `seed_registry`), so no new credential is needed:
 
 ```
-CUQ_REPORTING_URL=http://127.0.0.1:8090
+CUQ_REPORTING_URL=http://127.0.0.1:8091
 ```
 
 Restart `scripts/dev-local.sh` (or just the backend) to pick it up, then:
