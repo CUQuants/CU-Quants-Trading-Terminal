@@ -1,1 +1,1 @@
-"""Financial and crypto news aggregation for the terminal backend."""
+"""News collection, event grouping, and AI enrichment."""

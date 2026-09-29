@@ -113,6 +113,7 @@ class OkxOrderEventStream:
         while self._running:
             try:
                 await self._ws.start()
+                await self._emit_status("connected")
                 await self._ws.subscribe("orders", {"instType": "SPOT"})
                 break
             except asyncio.CancelledError:
@@ -144,7 +145,6 @@ class OkxOrderEventStream:
         # Connected. The SDK's supervisor owns reconnects and subscription
         # replay from here; we only surface up/down transitions.
         logger.info("OKX proxy WS connected and subscribed to orders")
-        await self._emit_status("connected")
 
         was_up = True
         while self._running:

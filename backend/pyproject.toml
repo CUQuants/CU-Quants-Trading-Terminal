@@ -29,4 +29,4 @@ package = false
 # Local sibling checkout for development against this flat workspace.
 # Swap for a pinned git rev before merging, e.g.
 #   cuq-proxy-client = { git = "https://github.com/CUQuants/proxy-client.git", rev = "d82260e" }
-cuq-proxy-client = { path = "../../proxy-client", editable = true }
+cuq-proxy-client = { path = "../../proxy-client" }

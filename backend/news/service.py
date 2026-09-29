@@ -4,6 +4,7 @@ import asyncio
 import logging
 import math
 import os
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 
@@ -51,6 +52,7 @@ class NewsService:
         provider_timeout: float = 30,
         cache_ttl: float = 3600,
         max_articles: int = 500,
+        on_refresh: Callable[[list[NewsArticle]], Awaitable[object]] | None = None,
     ) -> None:
         if refresh_interval is None:
             refresh_interval = _refresh_interval_from_env(cache_ttl)
@@ -69,6 +71,7 @@ class NewsService:
         self._provider_timeout = provider_timeout
         self._cache_ttl = cache_ttl
         self._max_articles = max_articles
+        self._on_refresh = on_refresh
         self._statuses = {
             provider.name: NewsProviderStatus(
                 name=provider.name,
@@ -192,6 +195,9 @@ class NewsService:
             if usable_response:
                 self._last_success = self._last_refresh
             self._rebuild_cache(self._last_refresh)
+            articles = [article.model_copy(deep=True) for article in self._cache]
+        if self._on_refresh is not None:
+            await self._on_refresh(articles)
 
     @staticmethod
     def _sort_articles(articles: list[NewsArticle]) -> list[NewsArticle]:

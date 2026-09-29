@@ -316,7 +316,10 @@ def _yahoo_session(deadline: float):
             kwargs["timeout"] = min(_REQUEST_TIMEOUT, remaining)
             response = super().request(method, url, *args, **kwargs)
             parsed_url = urlsplit(url)
-            if parsed_url.hostname == "finance.yahoo.com" and parsed_url.path == "/xhr/ncp":
+            if (
+                parsed_url.hostname == "query2.finance.yahoo.com"
+                and parsed_url.path == "/v1/finance/search"
+            ):
                 _validate_yahoo_response(response)
             return response
 
@@ -324,8 +327,7 @@ def _yahoo_session(deadline: float):
 
 
 def _validate_yahoo_response(response) -> None:
-    # get_news can suppress malformed JSON and missing feed keys into []. Check
-    # only its news response here, leaving cookie and crumb requests unchanged.
+    # Search can suppress malformed responses into an empty feed.
     if not 200 <= response.status_code < 300:
         raise _ProviderResponseError(f"http_{response.status_code}")
     try:
@@ -334,11 +336,7 @@ def _validate_yahoo_response(response) -> None:
         raise _ProviderResponseError("invalid_response") from None
     if isinstance(payload, dict) and (payload.get("error") or payload.get("errors")):
         raise _ProviderResponseError("api_error")
-    for key in ("data", "tickerStream", "stream"):
-        if not isinstance(payload, dict) or key not in payload:
-            raise _ProviderResponseError("invalid_response")
-        payload = payload[key]
-    if not isinstance(payload, list):
+    if not isinstance(payload, dict) or not isinstance(payload.get("news"), list):
         raise _ProviderResponseError("invalid_response")
 
 
@@ -354,7 +352,17 @@ def _fetch_yfinance_sync(stop: threading.Event) -> ProviderResult:
                 result.errors.append("batch:timeout")
                 break
             try:
-                items = yf.Ticker(ticker, session=session).get_news(count=10)
+                remaining = max(0.1, deadline - time.monotonic())
+                items = yf.Search(
+                    ticker,
+                    max_results=0,
+                    news_count=10,
+                    lists_count=0,
+                    include_cb=False,
+                    recommended=0,
+                    session=session,
+                    timeout=min(_REQUEST_TIMEOUT, remaining),
+                ).news
                 if not isinstance(items, list):
                     result.errors.append(f"{ticker}:invalid_response")
                     continue

@@ -58,6 +58,17 @@ won't boot without them. Leave `CUQ_PROXY_WS_URL` unset; the SDK derives
 Kraken still calls direct — set `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` if you'll
 open a Kraken view; leave blank for OKX-only testing.
 
+For Claude news insights, also set:
+
+```dotenv
+ANTHROPIC_API_KEY=your-claude-api-key
+CLAUDE_MODEL=your-approved-claude-model
+```
+
+News works without Claude: original articles and grouped events still appear,
+but insights are marked unavailable. Yahoo Finance is enabled by default and
+needs no key. Other optional news providers are listed in `backend/.env.example`.
+
 ## 3 — Run backend + frontend
 
 ```bash
@@ -85,6 +96,18 @@ curl -s localhost:8000/account/balances/okx | head -c 400
 
 A balance JSON means the whole path works: SDK signing → gateway auth → action
 allowlist → `x-simulated-trading: 1` → OKX demo → audit row.
+
+Check the News backend separately:
+
+```bash
+curl -s localhost:8000/news/status
+curl -s "localhost:8000/news?timeframe=24h&limit=5"
+curl -s "localhost:8000/news/events?timeframe=24h&limit=5"
+```
+
+`/news/status` shows which sources are healthy and whether Claude can create new
+insights. Feed requests read the backend cache; they do not call providers or
+Claude on every browser refresh.
 
 ## 5 — Place a test order
 
@@ -145,10 +168,10 @@ Leaving `CUQ_REPORTING_URL` unset is fine — trading still works, and
 ## What is NOT covered
 
 For News contracts and its manual browser checklist, see
-[News frontend and backend contract](docs/NEWS_API.md). The current backend does
-not implement the news endpoints, so News displays an unavailable state until
-integration. Frontend checks remain `npm run lint`, `npm run build`, and manual
-browser verification; there are no news mocks or automated integration tests.
+[News frontend and backend contract](docs/NEWS_API.md). Backend unit and
+integration tests use fake providers and a mocked Claude boundary, so they do
+not spend API credits or prove that deployment credentials are valid. The final
+demo still needs one live provider refresh and one live Claude response.
 
 - `docker compose up` — that path still works for a containerised run, but a
   backend container can't reach a gateway on the host's `127.0.0.1:8080`

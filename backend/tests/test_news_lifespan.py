@@ -8,6 +8,7 @@ import asyncio
 import importlib.util
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 
@@ -53,6 +54,8 @@ def load_app_with_trading_fakes(monkeypatch):
 async def test_app_starts_news_and_closes_it_on_normal_or_exception_exit(
     monkeypatch, raise_in_lifespan,
 ):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_MODEL", raising=False)
     app_module, events = load_app_with_trading_fakes(monkeypatch)
     fetched = asyncio.Event()
     calls = 0
@@ -64,10 +67,16 @@ async def test_app_starts_news_and_closes_it_on_normal_or_exception_exit(
         return ProviderResult([{
             "source": "Example", "title": "Bitcoin startup update",
             "summary": "First refresh", "url": "https://example.test/startup",
+            "published_at": datetime.now(timezone.utc),
         }])
 
     service = NewsService([NewsProvider("Example", fetch)], refresh_interval=0.01)
-    monkeypatch.setattr(app_module, "NewsService", lambda: service)
+
+    def make_service(**kwargs):
+        service._on_refresh = kwargs.get("on_refresh")
+        return service
+
+    monkeypatch.setattr(app_module, "NewsService", make_service)
 
     async def wait_for_refresh():
         while service.get_status().last_refresh is None:
@@ -76,6 +85,7 @@ async def test_app_starts_news_and_closes_it_on_normal_or_exception_exit(
     async def run_lifespan():
         async with app_module.lifespan(app_module.app):
             assert app_module.app.state.news_service is service
+            assert app_module.app.state.news_event_processor is not None
             await asyncio.wait_for(fetched.wait(), timeout=1)
             await asyncio.wait_for(wait_for_refresh(), timeout=1)
             assert service.get_status().next_refresh is not None
@@ -85,10 +95,13 @@ async def test_app_starts_news_and_closes_it_on_normal_or_exception_exit(
             ) as client:
                 response = await client.get("/news")
                 assert response.status_code == 200
-                assert response.json()[0]["title"] == "Bitcoin startup update"
+                assert response.json()["items"][0]["headline"] == "Bitcoin startup update"
+                response = await client.get("/news/events")
+                assert response.status_code == 200
+                assert response.json()["items"][0]["insightStatus"] == "unavailable"
                 response = await client.get("/news/status")
                 assert response.status_code == 200
-                assert response.json()["providers"][0]["state"] == "ok"
+                assert response.json()["sources"][0]["status"] == "healthy"
             if raise_in_lifespan:
                 raise RuntimeError("Application body failed")
 

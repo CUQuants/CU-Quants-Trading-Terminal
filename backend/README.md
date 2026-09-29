@@ -14,48 +14,29 @@ configure the terminal's existing proxy credentials as described in
 [DEV_TESTING.md](../DEV_TESTING.md). News credentials are optional and independent
 of exchange credentials. Never copy credentials into source files.
 
-The sibling `proxy-client` must export `ReportingClient` for the existing app
-imports to work. The local SDK checkout inspected during this implementation
-does not; see the [implementation briefing](../docs/NEWS_BRIEFING.md) for the
-verification boundary and deployment prerequisite.
-
 ## News API
 
-`GET /news` returns a JSON array of cached articles, newest first. It does not
-contact upstream providers. An empty cache, including initial startup, returns
-`[]`; consult `/news/status` to distinguish pending, disabled, and failed sources.
+News is collected in the background and kept in a process-local cache. Browser
+requests never call providers or Claude directly.
 
 ```bash
-curl "http://localhost:8000/news?pairs=BTC%2FUSD&pairs=ETH%2FUSD&limit=20"
-curl "http://localhost:8000/news?assets=SOL&matched_only=true&category=Crypto"
+curl "http://localhost:8000/news?pair=BTC%2FUSD&pair=ETH%2FUSD&limit=20"
+curl "http://localhost:8000/news/events?category=Crypto&timeframe=24h"
 curl "http://localhost:8000/news/status"
 ```
 
 | Parameter | Behavior |
 | --- | --- |
-| `pairs` | Repeat for each pair. Accepts `BTC/USD`, `BTC-USD`, or `BTC_USD`; labels use `BASE/QUOTE`, with `XBT` mapped to `BTC`. |
-| `assets` | Repeat for symbols or recognized asset names, such as `BTC` or `Bitcoin`. |
-| `matched_only` | Defaults to `false`. When true, retain articles matching the requested pairs or assets. |
-| `category` | `All`, `Crypto`, `Trad-Fi`, `FX/Macro`, or `Geo-Politics`. |
-| `source` | Case-insensitive exact source or provider name, such as `Finnhub` or `Finnhub/Reuters`. |
-| `q` | Case-insensitive title/summary substring search. |
-| `limit`, `offset` | Pagination after filtering; limit defaults to 100, maximum 500; offset defaults to 0. |
+| `pair` | Repeat exact `BASE/QUOTE` pairs. Multiple pairs use OR matching. |
+| `category` | `Crypto`, `Trad-Fi`, `FX/Macro`, or `Geo-Politics`. |
+| `source` | Source ID returned by `/news/status`. |
+| `timeframe` | `1h`, `24h`, or `7d`; defaults to `24h`. |
+| `limit` | Defaults to 100 and cannot exceed 100. |
 
-```json
-[
-  {
-    "source": "Example",
-    "title": "Bitcoin market update",
-    "summary": "A normalized plain-text summary.",
-    "url": "https://example.test/story",
-    "published_at": "2026-09-21T12:00:00Z",
-    "category": "Crypto",
-    "assets": ["BTC"],
-    "matched": true,
-    "match_terms": ["BTC/USD"]
-  }
-]
-```
+`GET /news` returns individual articles. `GET /news/events` returns likely
+same-story groups, their supporting articles, and an optional validated Claude
+insight. Both use the camelCase feed envelope documented in
+[`docs/NEWS_API.md`](../docs/NEWS_API.md).
 
 Normalization strips markup, decodes entities, rejects missing titles, and
 converts supported timestamps to UTC. Unknown or invalid publication times stay
@@ -90,15 +71,9 @@ new additions to a degraded snapshot at that earlier deadline. Cache reads
 enforce expiry even if no refresh completes. The visible cache contains at most
 500 articles, and each provider snapshot is also capped at 500.
 
-`GET /news/status` reports:
-
-- `refresh_interval_seconds`, `refreshing`, `last_refresh`, `last_success`, and
-  `next_refresh` for the scheduler.
-- `article_count` after deduplication and the cache limit, plus `stale` when no
-  enabled provider has a fresh, successful snapshot.
-- `providers`, each containing `name`, `enabled`, `state`, `disabled_reason`,
-  `last_attempt`, `last_success`, `last_error`, `consecutive_failures`,
-  `total_failures`, `article_count`, and `stale`.
+`GET /news/status` reports frontend-safe provider health, available categories,
+and whether Claude is configured. Internal scheduler details remain inside the
+service.
 
 Provider states are `disabled`, `pending`, `ok`, `degraded` (usable articles plus
 failures), and `error`. A successful response resets consecutive failures but
@@ -148,16 +123,23 @@ Provider references: [Finnhub market news](https://finnhub.io/docs/api/market-ne
 [NewsAPI headlines](https://newsapi.org/docs/endpoints/top-headlines), and
 [yfinance source](https://github.com/ranaroussi/yfinance).
 
+## Claude event insights
+
+Set `ANTHROPIC_API_KEY` and `CLAUDE_MODEL` to enable new insights. Each refresh
+first deduplicates and groups articles, then sends only changed events to Claude.
+The response must match a strict JSON schema, cite supporting article IDs, use
+known assets, include every required section, and avoid trading instructions.
+Invalid or unavailable responses are hidden while the original event remains
+visible. Valid results are cached by event content, model, prompt, and schema.
+
 ## Tests
 
 ```bash
-uv run pytest tests/test_news_providers.py tests/test_news_normalization.py tests/test_news_service.py tests/test_news_routes.py tests/test_news_lifespan.py -q
+uv run pytest tests/test_news_grouping.py tests/test_claude_news.py tests/test_news_event_service.py tests/test_news_normalization.py tests/test_news_providers.py tests/test_news_service.py tests/test_news_routes.py tests/test_news_lifespan.py tests/test_news_integration.py -q
 uv run pytest tests -q
 ```
 
-The news tests use `httpx.MockTransport`, fake providers, and FastAPI's existing
-`TestClient` pattern. They do not require credentials or live network access.
-The lifespan tests load the real app wiring with fake trading collaborators;
-they verify news startup and cleanup without claiming external SDK integration.
-The full backend suite additionally requires a sibling `proxy-client` checkout
-that exports `ReportingClient`, as expected by the existing reporting service.
+The news suite uses HTTP fixtures, fake providers, and a mocked Claude transport.
+It does not require credentials, network access, or API credits. The integration
+test covers provider refresh through grouping and Claude validation to the final
+frontend response, including cache reuse and provider failure behavior.

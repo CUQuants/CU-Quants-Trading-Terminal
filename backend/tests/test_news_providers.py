@@ -251,15 +251,13 @@ async def test_yahoo_runs_off_loop_and_accepts_current_and_legacy_records(monkey
         def __exit__(self, *args):
             pass
 
-    class Ticker:
-        def __init__(self, ticker, session):
+    class Search:
+        def __init__(self, ticker, **kwargs):
             seen_tickers.append(ticker)
-
-        def get_news(self, count):
             threads.append(threading.get_ident())
             if len(seen_tickers) > 1:
                 raise RuntimeError("sensitive-provider-error")
-            return [
+            self.news = [
                 {"title": "Legacy", "publisher": "Wire", "link": _URL,
                  "providerPublishTime": 1789992000, "relatedTickers": ["BTC-USD"]},
                 {"content": {"title": "Current", "summary": "Summary", "pubDate": _DATE,
@@ -270,7 +268,7 @@ async def test_yahoo_runs_off_loop_and_accepts_current_and_legacy_records(monkey
             ]
 
     monkeypatch.setattr(providers.importlib.util, "find_spec", lambda name: object())
-    monkeypatch.setattr(providers.importlib, "import_module", lambda name: SimpleNamespace(Ticker=Ticker))
+    monkeypatch.setattr(providers.importlib, "import_module", lambda name: SimpleNamespace(Search=Search))
     monkeypatch.setattr(providers, "_yahoo_session", Session)
     async with httpx.AsyncClient() as client:
         result = await _provider(client, "yFinance", {}).fetch()
@@ -300,16 +298,13 @@ def test_yahoo_batch_deadline_preserves_completed_tickers(monkeypatch):
         def __exit__(self, *args):
             pass
 
-    class Ticker:
-        def __init__(self, ticker, session):
-            pass
-
-        def get_news(self, count):
+    class Search:
+        def __init__(self, ticker, **kwargs):
             now[0] = 21.0
-            return [{"title": "Saved before deadline", "link": _URL}]
+            self.news = [{"title": "Saved before deadline", "link": _URL}]
 
     monkeypatch.setattr(providers.time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(providers.importlib, "import_module", lambda name: SimpleNamespace(Ticker=Ticker))
+    monkeypatch.setattr(providers.importlib, "import_module", lambda name: SimpleNamespace(Search=Search))
     monkeypatch.setattr(providers, "_yahoo_session", Session)
     result = providers._fetch_yfinance_sync(threading.Event())
     assert len(result.articles) == 1
@@ -343,14 +338,12 @@ def test_yahoo_session_caps_request_timeout_and_enforces_batch_deadline(monkeypa
 @pytest.mark.parametrize("response,expected_error", [
     (httpx.Response(200, text="sensitive invalid JSON"), "invalid_response"),
     (httpx.Response(200, json={}), "invalid_response"),
-    (httpx.Response(200, json={"data": {}}), "invalid_response"),
-    (httpx.Response(200, json={"data": {"tickerStream": {}}}), "invalid_response"),
-    (httpx.Response(200, json={"data": {"tickerStream": {"stream": None}}}), "invalid_response"),
-    (httpx.Response(200, json={"data": {"tickerStream": {"stream": {}}}}), "invalid_response"),
+    (httpx.Response(200, json={"news": None}), "invalid_response"),
+    (httpx.Response(200, json={"news": {}}), "invalid_response"),
     (httpx.Response(429, text="sensitive upstream details"), "http_429"),
     (httpx.Response(200, json={"errors": ["sensitive upstream error"],
-                              "data": {"tickerStream": {"stream": []}}}), "api_error"),
-    (httpx.Response(200, json={"data": {"tickerStream": {"stream": []}}}), None),
+                              "news": []}), "api_error"),
+    (httpx.Response(200, json={"news": []}), None),
 ])
 def test_yahoo_feed_validation_prevents_false_healthy_empty_results(
     monkeypatch, response, expected_error
@@ -368,22 +361,19 @@ def test_yahoo_feed_validation_prevents_false_healthy_empty_results(
         def request(self, method, url, *args, **kwargs):
             return response
 
-    class Ticker:
-        def __init__(self, ticker, session):
-            self.session = session
-
-        def get_news(self, count):
-            result = self.session.request("POST", "https://finance.yahoo.com/xhr/ncp?queryRef=latestNews")
-            # Mirror yfinance's suppression to demonstrate interception occurs
-            # before either malformed JSON or missing feed keys can become [].
+    class Search:
+        def __init__(self, ticker, session, **kwargs):
+            result = session.request(
+                "GET", "https://query2.finance.yahoo.com/v1/finance/search"
+            )
             try:
                 payload = result.json()
             except ValueError:
                 payload = {}
-            return payload.get("data", {}).get("tickerStream", {}).get("stream", [])
+            self.news = payload.get("news", [])
 
     monkeypatch.setitem(sys.modules, "curl_cffi", SimpleNamespace(requests=SimpleNamespace(Session=Session)))
-    monkeypatch.setattr(providers.importlib, "import_module", lambda name: SimpleNamespace(Ticker=Ticker))
+    monkeypatch.setattr(providers.importlib, "import_module", lambda name: SimpleNamespace(Search=Search))
     monkeypatch.setattr(providers, "_YAHOO_TICKERS", (("BTC-USD", "Crypto"),))
     result = providers._fetch_yfinance_sync(threading.Event())
     assert result.articles == []
