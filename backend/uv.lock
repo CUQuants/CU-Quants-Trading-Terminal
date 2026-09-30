@@ -85,7 +85,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cuq-proxy-client", extras = ["websocket"], editable = "../../proxy-client" },
+    { name = "cuq-proxy-client", extras = ["websocket"], git = "https://github.com/CUQuants/proxy-client.git?rev=aaa19e99138d6d2a7ec70bc052ec632d5e12cbb9" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
@@ -103,7 +103,7 @@ dev = [
 [[package]]
 name = "cuq-proxy-client"
 version = "0.4.0"
-source = { editable = "../../proxy-client" }
+source = { git = "https://github.com/CUQuants/proxy-client.git?rev=aaa19e99138d6d2a7ec70bc052ec632d5e12cbb9#aaa19e99138d6d2a7ec70bc052ec632d5e12cbb9" }
 dependencies = [
     { name = "httpx" },
 ]
@@ -112,16 +112,6 @@ dependencies = [
 websocket = [
     { name = "websockets" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "build", marker = "extra == 'dev'", specifier = ">=1.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
-    { name = "websockets", marker = "extra == 'dev'", specifier = ">=13" },
-    { name = "websockets", marker = "extra == 'websocket'", specifier = ">=13" },
-]
-provides-extras = ["websocket", "dev"]
 
 [[package]]
 name = "fastapi"
