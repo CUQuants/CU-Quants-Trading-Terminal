@@ -85,6 +85,8 @@ async def test_provider_refresh_groups_and_enriches_event_for_frontend():
 
     try:
         await service.refresh()
+        assert processor.events[0].insight_status == "pending"
+        await processor._task
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://testserver",

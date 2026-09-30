@@ -40,8 +40,8 @@ cd ../CU-Quants-Trading-Terminal
 cp backend/.env.example backend/.env
 ```
 
-Fill in `backend/.env` from the gateway's creds output. **The names differ** —
-map them:
+`scripts/dev-local.sh` reads the generated gateway credentials and passes them
+to the backend. If you start the backend directly, map the names in `backend/.env`:
 
 | `backend/.env` (terminal's name) | value / source |
 |---|---|
@@ -51,8 +51,8 @@ map them:
 | `CUQ_PROXY_OPERATOR_ID` | gateway's `CUQ_OPERATOR_ID` (`cuq-002`) |
 | `CUQ_PROXY_OPERATOR_NAME` | gateway's `CUQ_OPERATOR_NAME` |
 
-All five are mandatory — the backend builds `ServiceContainer` at startup and
-won't boot without them. Leave `CUQ_PROXY_WS_URL` unset; the SDK derives
+All five are mandatory when starting the backend directly. Leave
+`CUQ_PROXY_WS_URL` unset; the SDK derives
 `ws://127.0.0.1:8080/v1/okx/ws` from `CUQ_PROXY_URL`.
 
 Kraken still calls direct — set `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` if you'll
@@ -80,8 +80,9 @@ Runs both natively, no Docker, and tears both down on Ctrl-C:
 - backend  — `http://127.0.0.1:8000` (reads `backend/.env`)
 - dashboard — `http://127.0.0.1:5173`
 
-The script checks `backend/.env` has the five `CUQ_PROXY_*` vars and pings the
-gateway's `/healthz` first (warns if it's down). First run does `uv sync` and
+The script uses the gateway's `.env.dev-credentials` when present, checks
+`backend/.env` for the five `CUQ_PROXY_*` vars otherwise, and pings the gateway's
+`/healthz` first (warns if it's down). First run does `uv sync --extra news` and
 `npm install`; `SKIP_INSTALL=1` skips that. Override ports with `BACKEND_PORT` /
 `FRONTEND_PORT` (the frontend is pointed at the backend via `VITE_API_URL`
 automatically).

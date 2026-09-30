@@ -10,13 +10,14 @@
 #
 #   scripts/dev-local.sh
 #   SKIP_INSTALL=1 scripts/dev-local.sh          # skip uv sync / npm install
-#   BACKEND_PORT=9000 FRONTEND_PORT=5000 scripts/dev-local.sh
+#   BACKEND_PORT=9000 FRONTEND_PORT=5174 scripts/dev-local.sh
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
+GATEWAY_CREDS="$ROOT/../trading-gateway/.env.dev-credentials"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 
@@ -29,16 +30,30 @@ command -v npm >/dev/null || die "npm not found — install Node.js"
 [ -f "$BACKEND/.env" ] || die "$BACKEND/.env missing — cp backend/.env.example backend/.env and fill in CUQ_PROXY_* (see DEV_TESTING.md)"
 
 # --- preflight: required env + is the gateway up? -----------------------
-missing=""
-for v in CUQ_PROXY_URL CUQ_PROXY_API_KEY CUQ_PROXY_SECRET CUQ_PROXY_OPERATOR_ID CUQ_PROXY_OPERATOR_NAME; do
-  grep -qE "^${v}=.+" "$BACKEND/.env" || missing="$missing $v"
-done
-[ -z "$missing" ] || die "backend/.env is missing or blank:$missing
+if [ -f "$GATEWAY_CREDS" ]; then
+  credential() { sed -n "s/^$1=//p" "$GATEWAY_CREDS" | head -n 1; }
+  PROXY_BASE_URL="$(credential PROXY_BASE_URL)"
+  CUQ_OPERATOR_API_KEY="$(credential CUQ_OPERATOR_API_KEY)"
+  CUQ_OPERATOR_API_SECRET="$(credential CUQ_OPERATOR_API_SECRET)"
+  CUQ_OPERATOR_ID="$(credential CUQ_OPERATOR_ID)"
+  CUQ_OPERATOR_NAME="$(credential CUQ_OPERATOR_NAME)"
+  for value in "$PROXY_BASE_URL" "$CUQ_OPERATOR_API_KEY" "$CUQ_OPERATOR_API_SECRET" "$CUQ_OPERATOR_ID" "$CUQ_OPERATOR_NAME"; do
+    [ -n "$value" ] || die "local gateway credentials are incomplete — rerun scripts/dev-gateway.sh up"
+  done
+  GW="$PROXY_BASE_URL"
+  log "using local gateway credentials"
+else
+  missing=""
+  for v in CUQ_PROXY_URL CUQ_PROXY_API_KEY CUQ_PROXY_SECRET CUQ_PROXY_OPERATOR_ID CUQ_PROXY_OPERATOR_NAME; do
+    grep -qE "^${v}=.+" "$BACKEND/.env" || missing="$missing $v"
+  done
+  [ -z "$missing" ] || die "backend/.env is missing or blank:$missing
   (these are the terminal's names — map them from the gateway's creds file:
    CUQ_OPERATOR_API_KEY->CUQ_PROXY_API_KEY, _API_SECRET->CUQ_PROXY_SECRET,
    _ID->CUQ_PROXY_OPERATOR_ID, _NAME->CUQ_PROXY_OPERATOR_NAME, base URL->CUQ_PROXY_URL)"
-
-GW="$(grep -E '^CUQ_PROXY_URL=' "$BACKEND/.env" | head -1 | cut -d= -f2- | tr -d '"'"'"' \r')"
+  GW="$(grep -E '^CUQ_PROXY_URL=' "$BACKEND/.env" | head -1 | cut -d= -f2- | tr -d '"'"'"' \r')"
+  [[ "$GW" != *your-gateway-host.example* ]] || die "CUQ_PROXY_URL is still the example value in backend/.env"
+fi
 if curl -fsS -m 3 "$GW/healthz" >/dev/null 2>&1; then
   log "gateway reachable at $GW"
 else
@@ -48,8 +63,8 @@ fi
 
 # --- dependencies ------------------------------------------------------------
 if [ "${SKIP_INSTALL:-0}" != "1" ]; then
-  log "backend deps (uv sync)"
-  (cd "$BACKEND" && uv sync --quiet)
+  log "backend deps (uv sync --extra news)"
+  (cd "$BACKEND" && uv sync --extra news --quiet)
   if [ ! -d "$FRONTEND/node_modules" ]; then
     log "frontend deps (npm install)"
     (cd "$FRONTEND" && npm install --silent)
@@ -80,7 +95,16 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
 
 log "backend  -> http://127.0.0.1:$BACKEND_PORT   (routes OKX through $GW)"
-( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) &
+( cd "$BACKEND" &&
+  if [ -f "$GATEWAY_CREDS" ]; then
+    export CUQ_PROXY_URL="$PROXY_BASE_URL"
+    export CUQ_PROXY_API_KEY="$CUQ_OPERATOR_API_KEY"
+    export CUQ_PROXY_SECRET="$CUQ_OPERATOR_API_SECRET"
+    export CUQ_PROXY_OPERATOR_ID="$CUQ_OPERATOR_ID"
+    export CUQ_PROXY_OPERATOR_NAME="$CUQ_OPERATOR_NAME"
+  fi
+  exec uv run uvicorn app:app --reload --port "$BACKEND_PORT"
+) &
 backend_pid=$!
 
 log "frontend -> http://127.0.0.1:$FRONTEND_PORT"

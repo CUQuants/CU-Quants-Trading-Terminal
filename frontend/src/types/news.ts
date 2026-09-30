@@ -33,7 +33,7 @@ export interface Article {
   headline: string;
   publishedAt: string;
   /** Publisher-provided text, never an AI-generated summary. */
-  excerpt?: string;
+  excerpt?: string | null;
   category: string;
   matchedAssets: string[];
   matchedPairs: string[];
@@ -84,7 +84,7 @@ export interface SourceStatus {
   name: string;
   status: "healthy" | "degraded" | "unavailable";
   lastSuccessfulRefreshAt: string | null;
-  message?: string;
+  message?: string | null;
 }
 
 export interface NewsFilterOption {
@@ -98,6 +98,6 @@ export interface NewsStatus {
   categories: NewsFilterOption[];
   ai: {
     status: "available" | "unavailable";
-    message?: string;
+    message?: string | null;
   };
 }

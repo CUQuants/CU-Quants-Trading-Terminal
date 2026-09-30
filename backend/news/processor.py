@@ -1,4 +1,6 @@
 import logging
+import asyncio
+from contextlib import suppress
 
 from models import NewsArticle
 from news.claude import (
@@ -19,6 +21,7 @@ class NewsEventProcessor:
         self.max_insights = max_insights
         self._cache: dict[str, Insight | None] = {}
         self._events: list[NewsEvent] = []
+        self._task: asyncio.Task | None = None
 
     @property
     def ai_available(self) -> bool:
@@ -29,25 +32,48 @@ class NewsEventProcessor:
         return [event.model_copy(deep=True) for event in self._events]
 
     async def process(self, articles: list[NewsArticle]) -> list[NewsEvent]:
+        if self._task is not None:
+            self._task.cancel()
         events = group_articles(articles)
         for index, event in enumerate(events):
-            if index < self.max_insights:
-                event.insight = await self._insight_for(event)
-            event.insight_status = "validated" if event.insight else "unavailable"
+            if self.claude and index < self.max_insights:
+                key = self._cache_key(event)
+                if key in self._cache:
+                    event.insight = self._cache[key]
+                    event.insight_status = "validated" if event.insight else "unavailable"
+            else:
+                event.insight_status = "unavailable"
         self._events = events
+        pending = [event for event in events if event.insight_status == "pending"]
+        if pending:
+            self._task = asyncio.create_task(self._enrich(pending), name="news-insights")
         return self.events
 
     async def aclose(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._task
         if self.claude:
             await self.claude.aclose()
 
+    def _cache_key(self, event: NewsEvent) -> str:
+        return ":".join([event.content_hash, self.claude.model, PROMPT_VERSION, SCHEMA_VERSION])
+
+    async def _enrich(self, events: list[NewsEvent]) -> None:
+        limit = asyncio.Semaphore(3)
+
+        async def enrich(event: NewsEvent) -> None:
+            async with limit:
+                event.insight = await self._insight_for(event)
+                event.insight_status = "validated" if event.insight else "unavailable"
+
+        await asyncio.gather(*(enrich(event) for event in events))
+
     async def _insight_for(self, event: NewsEvent) -> Insight | None:
-        model = self.claude.model if self.claude else "unconfigured"
-        key = ":".join([event.content_hash, model, PROMPT_VERSION, SCHEMA_VERSION])
+        key = self._cache_key(event)
         if key in self._cache:
             return self._cache[key]
-        if not self.claude:
-            return None
         try:
             insight = await self.claude.create_insight(event)
         except ClaudeRejectedError:

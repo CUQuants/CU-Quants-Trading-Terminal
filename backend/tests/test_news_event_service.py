@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -68,6 +69,7 @@ async def test_caches_unchanged_events_and_refreshes_changed_events():
     )
 
     await processor.process([first])
+    await processor._task
     await processor.process([first])
     assert claude.calls == 1
 
@@ -77,6 +79,9 @@ async def test_caches_unchanged_events_and_refreshes_changed_events():
         minutes=10,
     )
     events = await processor.process([first, second])
+    assert events[0].insight_status == "pending"
+    await processor._task
+    events = processor.events
 
     assert claude.calls == 2
     assert len(events[0].articles) == 2
@@ -97,6 +102,31 @@ async def test_unconfigured_claude_does_not_break_event_feed():
 
 
 @pytest.mark.asyncio
+async def test_events_are_visible_while_claude_is_waiting():
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class SlowClaude(FakeClaude):
+        async def create_insight(self, event):
+            started.set()
+            await release.wait()
+            return await super().create_insight(event)
+
+    processor = NewsEventProcessor(SlowClaude())
+    events = await processor.process([article(
+        "https://news.test/one",
+        "Exchange suspends Bitcoin withdrawals after outage",
+    )])
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert events[0].insight_status == "pending"
+    assert processor.events[0].insight_status == "pending"
+
+    release.set()
+    await processor._task
+    assert processor.events[0].insight_status == "validated"
+
+
+@pytest.mark.asyncio
 async def test_claude_failure_does_not_break_event_feed():
     processor = NewsEventProcessor(FailingClaude())
 
@@ -104,6 +134,10 @@ async def test_claude_failure_does_not_break_event_feed():
         "https://news.test/one",
         "Exchange suspends Bitcoin withdrawals after outage",
     )])
+
+    assert events[0].insight_status == "pending"
+    await processor._task
+    events = processor.events
 
     assert events[0].insight_status == "unavailable"
     assert events[0].insight is None
