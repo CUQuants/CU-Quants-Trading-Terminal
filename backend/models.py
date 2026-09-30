@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, Field
 from typing import Any, Literal, Optional, List
 
 
@@ -167,3 +169,47 @@ class LogPageResponse(BaseModel):
     """One filtered/paginated page of request_log."""
     logs: List[LogEntryResponse]
     next_cursor: Optional[str] = None
+
+
+# --- News ---
+
+NewsCategory = Literal["Crypto", "Trad-Fi", "FX/Macro", "Geo-Politics"]
+
+
+class NewsArticle(BaseModel):
+    """Provider-independent article; unknown publication times remain null."""
+
+    source: str
+    title: str
+    summary: str = ""
+    url: str = ""
+    published_at: Optional[datetime] = None
+    category: NewsCategory = "Trad-Fi"
+    assets: List[str] = Field(default_factory=list)
+    matched: bool = False
+    match_terms: List[str] = Field(default_factory=list)
+
+
+class NewsProviderStatus(BaseModel):
+    name: str
+    enabled: bool
+    state: Literal["disabled", "pending", "ok", "degraded", "error"]
+    disabled_reason: Optional[str] = None
+    last_attempt: Optional[datetime] = None
+    last_success: Optional[datetime] = None
+    last_error: Optional[str] = None
+    consecutive_failures: int = 0
+    total_failures: int = 0
+    article_count: int = 0
+    stale: bool = True
+
+
+class NewsStatusResponse(BaseModel):
+    refresh_interval_seconds: float
+    refreshing: bool
+    last_refresh: Optional[datetime] = None
+    last_success: Optional[datetime] = None
+    next_refresh: Optional[datetime] = None
+    article_count: int
+    stale: bool
+    providers: List[NewsProviderStatus]
