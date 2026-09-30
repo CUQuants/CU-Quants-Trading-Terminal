@@ -114,7 +114,7 @@ credential already has `admin_role='auditor'` (`dev-gateway.sh`'s
 `seed_registry`), so no new credential is needed:
 
 ```
-CUQ_REPORTING_URL=http://127.0.0.1:8090
+CUQ_REPORTING_URL=http://127.0.0.1:8091
 ```
 
 Restart `scripts/dev-local.sh` (or just the backend) to pick it up, then:
@@ -143,6 +143,12 @@ Leaving `CUQ_REPORTING_URL` unset is fine — trading still works, and
 | `--strictPort` error on start | `5173` (or your `FRONTEND_PORT`) is in use — free it or set a different `FRONTEND_PORT` |
 
 ## What is NOT covered
+
+For News contracts and its manual browser checklist, see
+[News frontend and backend contract](docs/NEWS_API.md). The current backend does
+not implement the news endpoints, so News displays an unavailable state until
+integration. Frontend checks remain `npm run lint`, `npm run build`, and manual
+browser verification; there are no news mocks or automated integration tests.
 
 - `docker compose up` — that path still works for a containerised run, but a
   backend container can't reach a gateway on the host's `127.0.0.1:8080`
