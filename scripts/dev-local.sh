@@ -56,11 +56,36 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
   fi
 fi
 
+# --- preflight: ports free? -------------------------------------------------
+# A backend left over from an earlier run (uvicorn --reload can outlive its
+# parent) otherwise surfaces as a bare "[Errno 48] Address already in use".
+for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
+  holder="$(lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+  [ -z "$holder" ] || die "port $port is already in use by PID $holder:
+    $(ps -o command= -p "$holder" 2>/dev/null)
+  stop it with:  kill $holder   (or kill -9 $holder if it hangs)"
+done
+
 # --- run both; kill the whole process group on exit --------------------------
-trap 'kill 0' EXIT INT TERM
+# SIGTERM first; SIGKILL anything still alive after 3s. uvicorn's graceful
+# shutdown can hang (open WebSockets), and a survivor keeps the port bound.
+PGID="$(ps -o pgid= -p $$ | tr -d ' ')"
+SERVERS='uvicorn app:app|uv run uvicorn|vite'
+cleanup() {
+  trap - EXIT
+  trap '' INT TERM HUP                 # we signal our own group; don't die mid-cleanup
+  kill -TERM 0 2>/dev/null || true
+  for _ in 1 2 3; do
+    pgrep -g "$PGID" -f "$SERVERS" >/dev/null || return 0
+    sleep 1
+  done
+  warn "servers ignored SIGTERM — forcing"
+  pkill -KILL -g "$PGID" -f "$SERVERS" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM HUP
 
 log "backend  -> http://127.0.0.1:$BACKEND_PORT   (routes OKX through $GW)"
-( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) &
+( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" --timeout-graceful-shutdown 3 ) &
 backend_pid=$!
 
 log "frontend -> http://127.0.0.1:$FRONTEND_PORT"
