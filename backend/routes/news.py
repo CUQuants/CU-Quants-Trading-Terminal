@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from models import (
     NewsApiArticle,
     NewsApiStatus,
+    NewsArticle,
     NewsFeedResponse,
     NewsFilterOption,
     NewsSourceStatus,
@@ -40,7 +41,7 @@ def get_news(
     service = _news(request)
     requested_pairs = [*(pair or []), *(pairs or [])] or None
     status = service.get_status()
-    articles = service.get_articles(
+    articles, total = service.get_article_page(
         pairs=requested_pairs,
         assets=assets,
         category=category,
@@ -48,14 +49,12 @@ def get_news(
         query=q,
         timeframe=timeframe,
         matched_only=matched_only,
-        limit=500,
-        offset=0,
+        limit=limit,
+        offset=offset,
     )
-    api_articles = [_to_api_article(service, article) for article in articles]
-    api_articles = [article for article in api_articles if article is not None]
     return NewsFeedResponse(
-        items=api_articles[offset: offset + limit],
-        total=len(api_articles),
+        items=[_to_api_article(service, article) for article in articles],
+        total=total,
         lastSuccessfulRefreshAt=status.last_success,
         staleAfterSeconds=status.refresh_interval_seconds * 2,
     )
@@ -98,10 +97,8 @@ def _source_state(state: str) -> str:
     return "unavailable"
 
 
-def _to_api_article(service: NewsService, article) -> NewsApiArticle | None:
+def _to_api_article(service: NewsService, article: NewsArticle) -> NewsApiArticle:
     """Project only frontend-valid source reports; never invent dates or URLs."""
-    if article.published_at is None or not article.url.startswith(("http://", "https://")):
-        return None
     source_id = _source_id(article.source)
     return NewsApiArticle(
         id=service.article_id(article),

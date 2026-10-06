@@ -13,7 +13,12 @@ from itertools import islice
 import httpx
 
 from models import NewsArticle, NewsProviderStatus, NewsStatusResponse
-from news.normalization import deduplicate_articles, match_article, normalize_article
+from news.normalization import (
+    article_match_terms,
+    deduplicate_articles,
+    match_article,
+    normalize_article,
+)
 from news.providers import NewsProvider, ProviderResult, build_providers
 
 logger = logging.getLogger(__name__)
@@ -228,23 +233,16 @@ class NewsService:
                 self._rebuild_cache(now)
             return self._cache, self._snapshots
 
-    def get_articles(
+    def _filter_articles(
         self,
         *,
-        pairs: list[str] | None = None,
-        assets: list[str] | None = None,
         category: str | None = None,
         source: str | None = None,
         query: str | None = None,
         timeframe: str | None = None,
-        matched_only: bool = False,
-        limit: int = 100,
-        offset: int = 0,
     ) -> list[NewsArticle]:
-        """Filter a cache snapshot and add request-specific matching on copies."""
+        """Filter one cache snapshot without matching or copying articles."""
         cache, _ = self._expire_cache(datetime.now(timezone.utc))
-        if matched_only and not (pairs or assets):
-            return []
         source = source.casefold() if source else None
         query = query.casefold() if query else None
         result = []
@@ -266,6 +264,27 @@ class NewsService:
             if query and query not in f"{article.title} {article.summary}".casefold():
                 continue
             result.append(article)
+        return result
+
+    def get_articles(
+        self,
+        *,
+        pairs: list[str] | None = None,
+        assets: list[str] | None = None,
+        category: str | None = None,
+        source: str | None = None,
+        query: str | None = None,
+        timeframe: str | None = None,
+        matched_only: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[NewsArticle]:
+        """Filter a cache snapshot and add request-specific matching on copies."""
+        if matched_only and not (pairs or assets):
+            return []
+        result = self._filter_articles(
+            category=category, source=source, query=query, timeframe=timeframe,
+        )
         if not matched_only:
             result = result[offset: offset + limit]
         matched = (match_article(article, pairs or [], assets or []) for article in result)
@@ -273,6 +292,37 @@ class NewsService:
             matched = (article for article in matched if article.matched)
             return list(islice(matched, offset, offset + limit))
         return list(matched)
+
+    def get_article_page(
+        self,
+        *,
+        pairs: list[str] | None = None,
+        assets: list[str] | None = None,
+        category: str | None = None,
+        source: str | None = None,
+        query: str | None = None,
+        timeframe: str | None = None,
+        matched_only: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[NewsArticle], int]:
+        """Count frontend-valid records; match and copy only the requested page."""
+        result = self._filter_articles(
+            category=category, source=source, query=query, timeframe=timeframe,
+        )
+        result = [
+            article for article in result
+            if article.published_at is not None
+            and article.url.startswith(("http://", "https://"))
+        ]
+        if matched_only:
+            result = [
+                article for article in result
+                if article_match_terms(article, pairs or [], assets or [])
+            ]
+        total = len(result)
+        page = result[offset: offset + limit]
+        return [match_article(article, pairs or [], assets or []) for article in page], total
 
     @staticmethod
     def article_id(article: NewsArticle) -> str:

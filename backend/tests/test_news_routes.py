@@ -3,7 +3,7 @@
 import os
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -14,6 +14,9 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from news.providers import NewsProvider, ProviderResult
+from news.normalization import normalize_article
+import news.service as news_service
+import routes.news as news_routes
 from news.service import NewsService
 from routes.news import router
 
@@ -89,14 +92,14 @@ async def test_news_returns_serializable_cached_articles_without_refetching(news
 @pytest.mark.asyncio
 async def test_news_cache_read_runs_in_a_worker_thread(news_client, monkeypatch):
     client, service, _ = news_client
-    get_articles = service.get_articles
+    get_article_page = service.get_article_page
     threads = []
 
     def read_cache(**kwargs):
         threads.append(threading.get_ident())
-        return get_articles(**kwargs)
+        return get_article_page(**kwargs)
 
-    monkeypatch.setattr(service, "get_articles", read_cache)
+    monkeypatch.setattr(service, "get_article_page", read_cache)
     response = await client.get("/news")
     assert response.status_code == 200
     assert len(threads) == 1
@@ -195,6 +198,62 @@ async def test_news_combines_category_source_and_query_filters(news_client):
     response = await client.get("/news", params={"category": "All", "limit": 1, "offset": 1})
     assert response.status_code == 200
     assert [item["headline"] for item in response.json()["items"]] == ["Ethereum staking update"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("params", "total", "indices"), [
+    ({"pair": "BTC/USD", "limit": 10, "offset": 20}, 498, list(range(20, 30))),
+    ({"pair": "BTC/USD", "limit": 10, "offset": 600}, 498, []),
+    ({"pair": "BTC/USD", "matched_only": True, "limit": 10, "offset": 20},
+     249, list(range(40, 60, 2))),
+    ({"matched_only": True, "limit": 10}, 0, []),
+    ({"source": "Marketaux", "category": "Trad-Fi", "q": "Ethereum",
+      "timeframe": "1h", "limit": 4, "offset": 3}, 30, [7, 9, 11, 13]),
+])
+async def test_news_matches_and_projects_only_requested_page(
+    news_client, monkeypatch, params, total, indices,
+):
+    client, service, provider_calls = news_client
+    now = datetime.now(timezone.utc)
+    records = [
+        {"source": "Finnhub", "title": "Bitcoin missing date",
+         "url": "https://example.test/undated"},
+        {"source": "Finnhub", "title": "Bitcoin invalid URL",
+         "url": "ftp://example.test/invalid", "published_at": now},
+    ]
+    records.extend({
+        "source": "Finnhub" if index % 2 == 0 else "Marketaux",
+        "title": f"{'Bitcoin' if index % 2 == 0 else 'Ethereum'} report {index}",
+        "category": "Crypto" if index % 2 == 0 else "Trad-Fi",
+        "url": f"https://example.test/{index}",
+        "published_at": now - timedelta(minutes=index + 0.5),
+    } for index in range(498))
+    service._cache = [normalize_article(record) for record in records]
+    before = [article.model_dump() for article in service._cache]
+    match_article = news_service.match_article
+    project_article = news_routes._to_api_article
+    matched_titles = []
+    projected_titles = []
+
+    def counted_match(article, *args):
+        matched_titles.append(article.title)
+        return match_article(article, *args)
+
+    def counted_projection(service, article):
+        projected_titles.append(article.title)
+        return project_article(service, article)
+
+    monkeypatch.setattr(news_service, "match_article", counted_match)
+    monkeypatch.setattr(news_routes, "_to_api_article", counted_projection)
+    response = await client.get("/news", params=params)
+    expected = [records[index + 2]["title"] for index in indices]
+    assert response.status_code == 200
+    assert response.json()["total"] == total
+    assert [item["headline"] for item in response.json()["items"]] == expected
+    assert matched_titles == expected
+    assert projected_titles == expected
+    assert [article.model_dump() for article in service._cache] == before
+    assert len(provider_calls) == 1
 
 
 @pytest.mark.asyncio

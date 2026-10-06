@@ -263,17 +263,24 @@ def normalize_article(raw: dict) -> NewsArticle | None:
     )
 
 
-def match_article(
+def article_match_terms(
     article: NewsArticle, pairs: list[str], assets: list[str] | None = None
-) -> NewsArticle:
-    """Match requested pairs/assets on a copy, considering pair bases only."""
+) -> tuple[str, ...]:
+    """Read immutable cached matches without copying an article."""
     terms = _prepare_match_terms(
         tuple(value for value in pairs if isinstance(value, str)),
         tuple(value for value in assets or [] if isinstance(value, str)),
     )
-    hits = _match_terms(
+    return _match_terms(
         f"{article.title} {article.summary}", tuple(article.assets), terms,
     ) if terms else ()
+
+
+def match_article(
+    article: NewsArticle, pairs: list[str], assets: list[str] | None = None
+) -> NewsArticle:
+    """Match requested pairs/assets on a copy, considering pair bases only."""
+    hits = article_match_terms(article, pairs, assets)
     return article.model_copy(update={
         "assets": article.assets.copy(), "matched": bool(hits), "match_terms": list(hits),
     })

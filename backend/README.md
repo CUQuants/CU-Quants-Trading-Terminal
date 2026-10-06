@@ -14,10 +14,9 @@ configure the terminal's existing proxy credentials as described in
 [DEV_TESTING.md](../DEV_TESTING.md). News credentials are optional and independent
 of exchange credentials. Never copy credentials into source files.
 
-The sibling `proxy-client` must export `ReportingClient` for the existing app
-imports to work. The local SDK checkout inspected during this implementation
-does not; see the [implementation briefing](../docs/NEWS_BRIEFING.md) for the
-verification boundary and deployment prerequisite.
+The backend installs the Git revision of `proxy-client` pinned in
+`pyproject.toml`, which includes the `ReportingClient` used by the reporting
+service. A local SDK override must also provide that client.
 
 ## News API
 
@@ -74,8 +73,11 @@ Plain text bypasses HTML parsing. Bounded in-memory LRU caches reuse cleaned
 strings (2,048), compiled match patterns and canonical request terms (256 each),
 and immutable match results (4,096). Match keys include article text, asset
 metadata, and requested terms, so content changes cannot reuse stale hits.
-Pagination limits matching and copying; matched-only reads stop after filling
-the requested page. The synchronous `/news` handler runs in FastAPI's thread
+Feed reads count valid filtered records before pagination, then match, copy,
+and convert only the requested page. Matched-only totals check cached immutable
+match terms for every candidate without copying records outside the page.
+Internal matched-only reads without a total stop after filling the requested
+page. The synchronous `/news` handler runs in FastAPI's thread
 pool, with snapshot publication and expiry synchronized against refreshes.
 
 Deduplication compares exact nonempty URLs after surrounding whitespace is
@@ -171,5 +173,5 @@ The news tests use `httpx.MockTransport`, fake providers, and FastAPI's existing
 `TestClient` pattern. They do not require credentials or live network access.
 The lifespan tests load the real app wiring with fake trading collaborators;
 they verify news startup and cleanup without claiming external SDK integration.
-The full backend suite additionally requires a sibling `proxy-client` checkout
-that exports `ReportingClient`, as expected by the existing reporting service.
+The full backend suite additionally exercises the existing exchange and
+reporting services using the pinned `proxy-client` dependency.
