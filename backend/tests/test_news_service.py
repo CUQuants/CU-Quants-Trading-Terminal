@@ -502,3 +502,23 @@ async def test_pagination_limits_matching_work(monkeypatch, matched_only, expect
         assert calls == []
     finally:
         await service.aclose()
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(None, 300), ("", 300), ("120", 120), ("45.5", 45.5),
+     ("abc", 300), ("nan", 300), ("10", 300), ("3600", 300), ("-5", 300)],
+)
+def test_refresh_interval_reads_env_and_falls_back_on_invalid(monkeypatch, raw, expected):
+    if raw is None:
+        monkeypatch.delenv("NEWS_REFRESH_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("NEWS_REFRESH_SECONDS", raw)
+    service = NewsService([])
+    assert service.get_status().refresh_interval_seconds == expected
+
+
+def test_explicit_refresh_interval_overrides_env(monkeypatch):
+    monkeypatch.setenv("NEWS_REFRESH_SECONDS", "120")
+    service = NewsService([], refresh_interval=0.5)
+    assert service.get_status().refresh_interval_seconds == 0.5
