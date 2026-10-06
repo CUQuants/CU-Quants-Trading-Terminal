@@ -74,15 +74,15 @@ async def test_news_returns_serializable_cached_articles_without_refetching(news
     response = await client.get("/news")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 3
-    assert data[0]["title"] == "Bitcoin mining update"
-    assert data[0]["category"] == "Crypto"
-    assert set(data[0]) == {
-        "source", "title", "summary", "url", "published_at", "category",
-        "assets", "matched", "match_terms",
+    assert data["total"] == 2
+    assert len(data["items"]) == 2
+    assert data["items"][0]["headline"] == "Bitcoin mining update"
+    assert data["items"][0]["category"] == "Crypto"
+    assert set(data["items"][0]) == {
+        "id", "sourceId", "sourceName", "url", "headline", "publishedAt",
+        "excerpt", "category", "matchedAssets", "matchedPairs",
     }
-    assert data[0]["published_at"].startswith("2026-01-03T00:00:00")
-    assert data[2]["published_at"] is None
+    assert data["items"][0]["publishedAt"].startswith("2026-01-03T00:00:00")
     assert len(calls) == 1
 
 
@@ -109,13 +109,14 @@ async def test_status_reports_refresh_metadata_and_provider_health(news_client):
     response = await client.get("/news/status")
     assert response.status_code == 200
     data = response.json()
-    assert data["article_count"] == 3
-    assert data["refresh_interval_seconds"] == 300
-    assert data["refreshing"] is False
-    assert data["last_refresh"] is not None
-    assert data["last_success"] is not None
-    assert data["providers"][0]["name"] == "Example"
-    assert data["providers"][0]["state"] == "ok"
+    assert data["checkedAt"] is not None
+    assert data["sources"][0]["id"] == "example"
+    assert data["sources"][0]["status"] == "healthy"
+    assert data["sources"][0]["lastSuccessfulRefreshAt"] is not None
+    assert data["ai"]["status"] == "unavailable"
+    assert {option["id"] for option in data["categories"]} == {
+        "Crypto", "Trad-Fi", "FX/Macro", "Geo-Politics",
+    }
     assert len(calls) == 1
 
 
@@ -126,16 +127,16 @@ async def test_news_accepts_repeated_pair_and_asset_filters(news_client):
         ("pairs", "BTC/USD"), ("pairs", "ETH/USD"), ("matched_only", "true"),
     ])
     assert response.status_code == 200
-    assert {item["title"] for item in response.json()} == {
+    assert {item["headline"] for item in response.json()["items"]} == {
         "Bitcoin mining update", "Ethereum staking update",
     }
-    assert all(item["matched"] for item in response.json())
+    assert all(item["matchedPairs"] for item in response.json()["items"])
 
     response = await client.get("/news", params=[
         ("assets", "BTC"), ("assets", "ETH"), ("matched_only", "true"),
     ])
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    assert len(response.json()["items"]) == 2
     assert not any(item.matched for item in service.get_articles())
 
 
@@ -147,11 +148,11 @@ async def test_news_combines_category_source_and_query_filters(news_client):
         "limit": 1, "offset": 0,
     })
     assert response.status_code == 200
-    assert [item["title"] for item in response.json()] == ["Ethereum staking update"]
+    assert [item["headline"] for item in response.json()["items"]] == ["Ethereum staking update"]
 
     response = await client.get("/news", params={"category": "All", "limit": 1, "offset": 1})
     assert response.status_code == 200
-    assert [item["title"] for item in response.json()] == ["Ethereum staking update"]
+    assert [item["headline"] for item in response.json()["items"]] == ["Ethereum staking update"]
 
 
 @pytest.mark.asyncio

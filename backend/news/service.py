@@ -1,6 +1,7 @@
 """Scheduled news refreshes, bounded process-local cache, and provider health."""
 
 import asyncio
+import hashlib
 import logging
 import math
 import os
@@ -235,6 +236,7 @@ class NewsService:
         category: str | None = None,
         source: str | None = None,
         query: str | None = None,
+        timeframe: str | None = None,
         matched_only: bool = False,
         limit: int = 100,
         offset: int = 0,
@@ -246,7 +248,15 @@ class NewsService:
         source = source.casefold() if source else None
         query = query.casefold() if query else None
         result = []
+        cutoff = None
+        if timeframe:
+            hours = {"1h": 1, "24h": 24, "7d": 24 * 7}.get(timeframe)
+            if hours is None:
+                raise ValueError("timeframe must be one of: 1h, 24h, 7d")
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         for article in cache:
+            if cutoff and (article.published_at is None or article.published_at < cutoff):
+                continue
             if category and category != "All" and article.category != category:
                 continue
             if source and source not in (
@@ -263,6 +273,12 @@ class NewsService:
             matched = (article for article in matched if article.matched)
             return list(islice(matched, offset, offset + limit))
         return list(matched)
+
+    @staticmethod
+    def article_id(article: NewsArticle) -> str:
+        """Create a stable frontend id without inventing identity data."""
+        identity = "|".join((article.url, article.source, article.title))
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
 
     def get_status(self) -> NewsStatusResponse:
         now = datetime.now(timezone.utc)

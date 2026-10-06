@@ -21,40 +21,46 @@ verification boundary and deployment prerequisite.
 
 ## News API
 
-`GET /news` returns a JSON array of cached articles, newest first. It does not
-contact upstream providers. An empty cache, including initial startup, returns
-`[]`; consult `/news/status` to distinguish pending, disabled, and failed sources.
+`GET /news` returns a frontend-compatible cached feed envelope, newest first. It
+does not contact upstream providers. An empty cache, including initial startup,
+returns an envelope with `items: []`; consult `/news/status` to distinguish
+pending, disabled, and failed sources.
 
 ```bash
-curl "http://localhost:8000/news?pairs=BTC%2FUSD&pairs=ETH%2FUSD&limit=20"
+curl "http://localhost:8000/news?pair=BTC%2FUSD&pair=ETH%2FUSD&timeframe=7d&limit=20"
 curl "http://localhost:8000/news?assets=SOL&matched_only=true&category=Crypto"
 curl "http://localhost:8000/news/status"
 ```
 
 | Parameter | Behavior |
 | --- | --- |
-| `pairs` | Repeat for each pair. Accepts `BTC/USD`, `BTC-USD`, or `BTC_USD`; labels use `BASE/QUOTE`, with `XBT` mapped to `BTC`. |
+| `pair` | Repeat for each pair. Accepts `BTC/USD`, `BTC-USD`, or `BTC_USD`; labels use `BASE/QUOTE`, with `XBT` mapped to `BTC`. Legacy `pairs` is also accepted. |
 | `assets` | Repeat for symbols or recognized asset names, such as `BTC` or `Bitcoin`. |
 | `matched_only` | Defaults to `false`. When true, retain articles matching the requested pairs or assets. |
 | `category` | `All`, `Crypto`, `Trad-Fi`, `FX/Macro`, or `Geo-Politics`. |
 | `source` | Case-insensitive exact source or provider name, such as `Finnhub` or `Finnhub/Reuters`. |
 | `q` | Case-insensitive title/summary substring search. |
+| `timeframe` | Optional `1h`, `24h`, or `7d` publication-time filter. |
 | `limit`, `offset` | Pagination after filtering; limit defaults to 100, maximum 500; offset defaults to 0. |
 
 ```json
-[
-  {
-    "source": "Example",
-    "title": "Bitcoin market update",
-    "summary": "A normalized plain-text summary.",
+{
+  "items": [{
+    "id": "stable-article-id",
+    "sourceId": "example",
+    "sourceName": "Example",
     "url": "https://example.test/story",
-    "published_at": "2026-09-21T12:00:00Z",
+    "headline": "Bitcoin market update",
+    "publishedAt": "2026-09-21T12:00:00Z",
+    "excerpt": "A normalized plain-text summary.",
     "category": "Crypto",
-    "assets": ["BTC"],
-    "matched": true,
-    "match_terms": ["BTC/USD"]
-  }
-]
+    "matchedAssets": ["BTC"],
+    "matchedPairs": ["BTC/USD"]
+  }],
+  "total": 1,
+  "lastSuccessfulRefreshAt": "2026-09-21T12:00:00Z",
+  "staleAfterSeconds": 600
+}
 ```
 
 Normalization strips markup, decodes entities, rejects missing titles, and
@@ -97,15 +103,14 @@ new additions to a degraded snapshot at that earlier deadline. Cache reads
 enforce expiry even if no refresh completes. The visible cache contains at most
 500 articles, and each provider snapshot is also capped at 500.
 
-`GET /news/status` reports:
+`GET /news/status` reports the frontend status contract:
 
-- `refresh_interval_seconds`, `refreshing`, `last_refresh`, `last_success`, and
-  `next_refresh` for the scheduler.
-- `article_count` after deduplication and the cache limit, plus `stale` when no
-  enabled provider has a fresh, successful snapshot.
-- `providers`, each containing `name`, `enabled`, `state`, `disabled_reason`,
-  `last_attempt`, `last_success`, `last_error`, `consecutive_failures`,
-  `total_failures`, `article_count`, and `stale`.
+- `checkedAt`, `sources`, and the complete category catalog.
+- Each source has an ID, display name, `healthy`/`degraded`/`unavailable` state,
+  its last successful refresh, and a safe human-readable message.
+- `ai` is currently `unavailable` because validated grouped news events are not
+  implemented yet. Internal provider-level detail remains available through
+  `NewsService.get_status()` and its tests.
 
 Provider states are `disabled`, `pending`, `ok`, `degraded` (usable articles plus
 failures), and `error`. A successful response resets consecutive failures but

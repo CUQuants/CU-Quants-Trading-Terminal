@@ -64,6 +64,7 @@ async def test_app_starts_news_and_closes_it_on_normal_or_exception_exit(
         return ProviderResult([{
             "source": "Example", "title": "Bitcoin startup update",
             "summary": "First refresh", "url": "https://example.test/startup",
+            "published_at": "2026-09-23T12:00:00Z",
         }])
 
     service = NewsService([NewsProvider("Example", fetch)], refresh_interval=0.01)
@@ -85,10 +86,10 @@ async def test_app_starts_news_and_closes_it_on_normal_or_exception_exit(
             ) as client:
                 response = await client.get("/news")
                 assert response.status_code == 200
-                assert response.json()[0]["title"] == "Bitcoin startup update"
+                assert response.json()["items"][0]["headline"] == "Bitcoin startup update"
                 response = await client.get("/news/status")
                 assert response.status_code == 200
-                assert response.json()["providers"][0]["state"] == "ok"
+                assert response.json()["sources"][0]["status"] == "healthy"
             if raise_in_lifespan:
                 raise RuntimeError("Application body failed")
 

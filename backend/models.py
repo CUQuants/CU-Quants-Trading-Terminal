@@ -213,3 +213,56 @@ class NewsStatusResponse(BaseModel):
     article_count: int
     stale: bool
     providers: List[NewsProviderStatus]
+
+
+class NewsApiArticle(BaseModel):
+    """Article wire format consumed by the frontend news view."""
+
+    id: str
+    sourceId: str
+    sourceName: str
+    url: str
+    headline: str
+    publishedAt: datetime
+    excerpt: Optional[str] = None
+    category: str
+    matchedAssets: List[str] = Field(default_factory=list)
+    matchedPairs: List[str] = Field(default_factory=list)
+
+
+class NewsFeedResponse(BaseModel):
+    """Cached article page and collection freshness metadata."""
+
+    items: List[NewsApiArticle]
+    total: int
+    lastSuccessfulRefreshAt: Optional[datetime] = None
+    staleAfterSeconds: float
+
+
+class NewsSourceStatus(BaseModel):
+    """Frontend-compatible projection of provider health."""
+
+    id: str
+    name: str
+    status: Literal["healthy", "degraded", "unavailable"]
+    lastSuccessfulRefreshAt: Optional[datetime] = None
+    message: Optional[str] = None
+
+
+class NewsFilterOption(BaseModel):
+    id: str
+    label: str
+
+
+class NewsAiStatus(BaseModel):
+    status: Literal["available", "unavailable"]
+    message: Optional[str] = None
+
+
+class NewsApiStatus(BaseModel):
+    """Frontend-compatible provider and catalog status."""
+
+    checkedAt: datetime
+    sources: List[NewsSourceStatus]
+    categories: List[NewsFilterOption]
+    ai: NewsAiStatus
