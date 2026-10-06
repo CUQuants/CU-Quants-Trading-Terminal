@@ -5,6 +5,7 @@ import re
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from functools import lru_cache
 from html import unescape
 from html.parser import HTMLParser
 
@@ -99,9 +100,18 @@ class _TextParser(HTMLParser):
 def _clean_text(value: object) -> str:
     if not isinstance(value, str):
         return ""
+    return _parse_text(value)
+
+
+@lru_cache(maxsize=2048)
+def _parse_text(value: str) -> str:
+    """Reuse cleaned strings across refreshes; plain text needs no HTML parser."""
+    value = unescape(value)
+    if "<" not in value:
+        return " ".join(unescape(value).split())
     parser = _TextParser()
     try:
-        parser.feed(unescape(value))
+        parser.feed(value)
         parser.close()
     except (AssertionError, ValueError):
         # Older supported Python versions reject malformed HTML declarations.
@@ -169,23 +179,33 @@ def _canonical_pair(value: object) -> str | None:
     return f"{base}/{quote}" if base and quote else None
 
 
-def _has_term(text: str, term: str, *, case_sensitive: bool = False) -> bool:
-    flags = 0 if case_sensitive else re.IGNORECASE
-    return re.search(
-        rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", text, flags
-    ) is not None
+def _bounded_term(pattern: str, *, case_sensitive: bool = False) -> str:
+    pattern = rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])"
+    return pattern if case_sensitive else rf"(?i:{pattern})"
+
+
+@lru_cache(maxsize=256)
+def _match_pattern(term: str) -> re.Pattern[str]:
+    """Compile bounded asset aliases or all supported pair forms together."""
+    if "/" in term:
+        base, quote = term.split("/")
+        base = "(?:BTC|XBT)" if base == "BTC" else re.escape(base)
+        quote = "(?:BTC|XBT)" if quote == "BTC" else re.escape(quote)
+        patterns = [_bounded_term(rf"{base}[/_-]{quote}")]
+    else:
+        patterns = [_bounded_term(
+            re.escape(term), case_sensitive=term in _AMBIGUOUS_SYMBOLS,
+        )]
+        patterns.extend(
+            r"(?i:\bBitcoin\b(?!\s+Cash\b))" if alias == "Bitcoin"
+            else _bounded_term(re.escape(alias))
+            for alias in _ASSET_ALIASES.get(term, ())
+        )
+    return re.compile("|".join(patterns))
 
 
 def _mentions_asset(text: str, symbol: str) -> bool:
-    if _has_term(text, symbol, case_sensitive=symbol in _AMBIGUOUS_SYMBOLS):
-        return True
-    for alias in _ASSET_ALIASES.get(symbol, ()):
-        if alias == "Bitcoin":
-            if re.search(r"\bBitcoin\b(?!\s+Cash\b)", text, re.IGNORECASE):
-                return True
-        elif _has_term(text, alias):
-            return True
-    return False
+    return _match_pattern(symbol).search(text) is not None
 
 
 def _category(source: str, title: str, summary: str, explicit: object) -> NewsCategory:
@@ -247,34 +267,38 @@ def match_article(
     article: NewsArticle, pairs: list[str], assets: list[str] | None = None
 ) -> NewsArticle:
     """Match requested pairs/assets on a copy, considering pair bases only."""
-    text = f"{article.title} {article.summary}"
-    mentioned = set(article.assets)
-    hits: list[str] = []
-    for value in pairs:
-        pair = _canonical_pair(value)
-        if not pair or pair in hits:
-            continue
-        base, quote = pair.split("/")
-        base_terms = (base, "XBT") if base == "BTC" else (base,)
-        quote_terms = (quote, "XBT") if quote == "BTC" else (quote,)
-        explicit = any(
-            _has_term(text, f"{base_term}{separator}{quote_term}")
-            for base_term in base_terms
-            for quote_term in quote_terms
-            for separator in ("/", "-", "_")
-        )
-        if explicit or base in mentioned or _mentions_asset(text, base):
-            hits.append(pair)
-    for value in assets or []:
-        symbol = _canonical_asset(value)
-        if not symbol or symbol in hits:
-            continue
-        if symbol in mentioned or _mentions_asset(text, symbol):
-            hits.append(symbol)
-    result = article.model_copy(deep=True)
-    result.matched = bool(hits)
-    result.match_terms = hits
-    return result
+    terms = _prepare_match_terms(
+        tuple(value for value in pairs if isinstance(value, str)),
+        tuple(value for value in assets or [] if isinstance(value, str)),
+    )
+    hits = _match_terms(
+        f"{article.title} {article.summary}", tuple(article.assets), terms,
+    ) if terms else ()
+    return article.model_copy(update={
+        "assets": article.assets.copy(), "matched": bool(hits), "match_terms": list(hits),
+    })
+
+
+@lru_cache(maxsize=256)
+def _prepare_match_terms(pairs: tuple[str, ...], assets: tuple[str, ...]) -> tuple[str, ...]:
+    """Canonicalize and deduplicate a request once, preserving match order."""
+    terms = [_canonical_pair(value) for value in pairs]
+    terms.extend(_canonical_asset(value) for value in assets)
+    return tuple(dict.fromkeys(term for term in terms if term))
+
+
+@lru_cache(maxsize=4096)
+def _match_terms(text: str, mentioned: tuple[str, ...], terms: tuple[str, ...]) -> tuple[str, ...]:
+    """Cache immutable hits by content so changed articles cannot reuse old matches."""
+    hits = []
+    for term in terms:
+        base = term.split("/", 1)[0]
+        if (
+            base in mentioned or _mentions_asset(text, base)
+            or ("/" in term and _match_pattern(term).search(text))
+        ):
+            hits.append(term)
+    return tuple(hits)
 
 
 def deduplicate_articles(articles: Iterable[NewsArticle]) -> list[NewsArticle]:

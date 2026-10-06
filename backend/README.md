@@ -64,6 +64,13 @@ explicit provider category, provider defaults, keyword fallback, then Trad-Fi.
 Matching uses asset names and bounded symbol matches; a quote currency alone
 does not match every pair. Matching is a relevance hint, not entity recognition.
 Each request receives copies so its pair list cannot alter another user's cache.
+Plain text bypasses HTML parsing. Bounded in-memory LRU caches reuse cleaned
+strings (2,048), compiled match patterns and canonical request terms (256 each),
+and immutable match results (4,096). Match keys include article text, asset
+metadata, and requested terms, so content changes cannot reuse stale hits.
+Pagination limits matching and copying; matched-only reads stop after filling
+the requested page. The synchronous `/news` handler runs in FastAPI's thread
+pool, with snapshot publication and expiry synchronized against refreshes.
 
 Deduplication compares exact nonempty URLs after surrounding whitespace is
 trimmed. The first completed provider supplying a URL wins. Tracking parameters,

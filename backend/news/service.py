@@ -2,8 +2,10 @@
 
 import asyncio
 import logging
+import threading
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
+from itertools import islice
 
 import httpx
 
@@ -58,6 +60,7 @@ class NewsService:
         self._last_success: datetime | None = None
         self._next_refresh: datetime | None = None
         self._refresh_lock = asyncio.Lock()
+        self._cache_lock = threading.Lock()
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -159,12 +162,13 @@ class NewsService:
                         task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
             # Publish all changes together so readers see a complete refresh snapshot.
-            self._snapshots = snapshots
-            self._statuses = statuses
-            self._last_refresh = datetime.now(timezone.utc)
-            if usable_response:
-                self._last_success = self._last_refresh
-            self._rebuild_cache(self._last_refresh)
+            with self._cache_lock:
+                self._snapshots = snapshots
+                self._statuses = statuses
+                self._last_refresh = datetime.now(timezone.utc)
+                if usable_response:
+                    self._last_success = self._last_refresh
+                self._rebuild_cache(self._last_refresh)
 
     @staticmethod
     def _sort_articles(articles: list[NewsArticle]) -> list[NewsArticle]:
@@ -187,9 +191,14 @@ class NewsService:
             default=None,
         )
 
-    def _expire_cache(self, now: datetime) -> None:
-        if self._cache_expires_at is not None and now >= self._cache_expires_at:
-            self._rebuild_cache(now)
+    def _expire_cache(
+        self, now: datetime,
+    ) -> tuple[list[NewsArticle], dict[str, tuple[datetime, list[NewsArticle]]]]:
+        """Capture a consistent snapshot for readers in FastAPI's thread pool."""
+        with self._cache_lock:
+            if self._cache_expires_at is not None and now >= self._cache_expires_at:
+                self._rebuild_cache(now)
+            return self._cache, self._snapshots
 
     def get_articles(
         self,
@@ -204,29 +213,37 @@ class NewsService:
         offset: int = 0,
     ) -> list[NewsArticle]:
         """Filter a cache snapshot and add request-specific matching on copies."""
-        self._expire_cache(datetime.now(timezone.utc))
+        cache, _ = self._expire_cache(datetime.now(timezone.utc))
+        if matched_only and not (pairs or assets):
+            return []
+        source = source.casefold() if source else None
+        query = query.casefold() if query else None
         result = []
-        for article in self._cache:
+        for article in cache:
             if category and category != "All" and article.category != category:
                 continue
-            if source and source.casefold() not in (
+            if source and source not in (
                 article.source.casefold(), article.source.split("/")[0].casefold()
             ):
                 continue
-            if query and query.casefold() not in f"{article.title} {article.summary}".casefold():
+            if query and query not in f"{article.title} {article.summary}".casefold():
                 continue
-            matched = match_article(article, pairs or [], assets or [])
-            if not matched_only or matched.matched:
-                result.append(matched)
-        return result[offset: offset + limit]
+            result.append(article)
+        if not matched_only:
+            result = result[offset: offset + limit]
+        matched = (match_article(article, pairs or [], assets or []) for article in result)
+        if matched_only:
+            matched = (article for article in matched if article.matched)
+            return list(islice(matched, offset, offset + limit))
+        return list(matched)
 
     def get_status(self) -> NewsStatusResponse:
         now = datetime.now(timezone.utc)
-        self._expire_cache(now)
+        cache, snapshots = self._expire_cache(now)
         providers = []
         for name, original in self._statuses.items():
             status = original.model_copy(deep=True)
-            snapshot = self._snapshots.get(name)
+            snapshot = snapshots.get(name)
             status.article_count = len(snapshot[1]) if snapshot else 0
             status.stale = (
                 snapshot is None
@@ -240,7 +257,7 @@ class NewsService:
             last_refresh=self._last_refresh,
             last_success=self._last_success,
             next_refresh=self._next_refresh,
-            article_count=len(self._cache),
+            article_count=len(cache),
             stale=not any(provider.enabled and not provider.stale for provider in providers),
             providers=providers,
         )

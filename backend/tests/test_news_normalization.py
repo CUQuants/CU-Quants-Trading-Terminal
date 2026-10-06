@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from news.normalization import deduplicate_articles, match_article, normalize_article
+from news import normalization
 
 
 def make_article(**overrides):
@@ -31,6 +32,22 @@ def test_html_entities_and_script_contents_are_removed():
     assert article.title == "Bitcoin & Ethereum rise"
     assert article.summary == "First Second line"
     assert article.assets == ["BTC", "ETH"]
+
+
+def test_plain_text_and_repeated_html_do_not_reparse(monkeypatch):
+    normalization._parse_text.cache_clear()
+    parser = normalization._TextParser
+    calls = []
+
+    def counted_parser():
+        calls.append(True)
+        return parser()
+
+    monkeypatch.setattr(normalization, "_TextParser", counted_parser)
+    assert make_article(title="Plain &amp;amp; text").title == "Plain & text"
+    for _ in range(2):
+        assert make_article(title="<b>Repeated headline</b>").title == "Repeated headline"
+    assert len(calls) == 1
 
 
 def test_unknown_html_declaration_does_not_discard_an_otherwise_valid_article():
@@ -153,6 +170,35 @@ def test_matching_ignores_malformed_requests_and_clears_previous_hits():
     assert result.matched is False
     assert result.match_terms == []
     assert matched.matched is True
+
+
+def test_cached_matches_are_isolated_and_follow_content_changes(monkeypatch):
+    article = make_article(title="Cached market update", assets=["BTC"])
+    first = match_article(article, ["BTC/USD", "ETH/USD"])
+    first.assets.clear()
+    first.match_terms.clear()
+
+    with monkeypatch.context() as cached:
+        def unexpected_search(term):
+            raise AssertionError("Unchanged articles should reuse their match terms")
+
+        cached.setattr(normalization, "_match_pattern", unexpected_search)
+        assert match_article(article, ["BTC/USD", "ETH/USD"]).match_terms == ["BTC/USD"]
+
+    article.assets = ["ETH"]
+    assert match_article(article, ["BTC/USD", "ETH/USD"]).match_terms == ["ETH/USD"]
+    article.title = "Bitcoin update"
+    assert match_article(article, ["BTC/USD", "ETH/USD"]).match_terms == ["BTC/USD", "ETH/USD"]
+    assert match_article(article, ["ETH/USD"]).match_terms == ["ETH/USD"]
+
+
+@pytest.mark.parametrize(("title", "pair", "matched"), [
+    ("KBTC", "BTC/USD", False), ("KSOL", "SOL/USD", True),
+    ("éBitcoin", "BTC/USD", False), ("éBTC", "BTC/USD", True),
+    ("Ksol/usd", "SOL/USD", False), ("sol/usd", "SOL/USD", True),
+])
+def test_cached_patterns_preserve_case_and_unicode_boundaries(title, pair, matched):
+    assert match_article(make_article(title=title), [pair]).matched is matched
 
 
 def test_deduplication_keeps_first_exact_url_and_retains_variants_and_empty_urls():

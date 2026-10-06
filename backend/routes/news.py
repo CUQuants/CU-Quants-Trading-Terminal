@@ -16,7 +16,7 @@ def _news(request: Request) -> NewsService:
 
 
 @router.get("", response_model=List[NewsArticle])
-async def get_news(
+def get_news(
     request: Request,
     pairs: Optional[List[str]] = Query(default=None, max_length=50),
     assets: Optional[List[str]] = Query(default=None, max_length=50),

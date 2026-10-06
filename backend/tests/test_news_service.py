@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from news.providers import NewsProvider, ProviderResult
 from news.service import NewsService
+from news import service as news_service
 
 
 def article(title, url, *, source="Example", category="Crypto", day=1):
@@ -467,5 +468,37 @@ async def test_filters_pagination_and_matching_do_not_mutate_shared_cache():
         bitcoin[0].title = "Changed by caller"
         bitcoin[0].assets.append("FAKE")
         assert [item.model_dump() for item in service.get_articles()] == before
+    finally:
+        await service.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("matched_only", "expected_title", "expected_calls"), [
+    (False, "Ethereum update", 1), (True, "Bitcoin second", 3),
+])
+async def test_pagination_limits_matching_work(monkeypatch, matched_only, expected_title, expected_calls):
+    fake = ScriptedProvider(ProviderResult([
+        article("Bitcoin first", "https://example.test/first", day=4),
+        article("Ethereum update", "https://example.test/eth", day=3),
+        article("Bitcoin second", "https://example.test/second", day=2),
+        article("Bitcoin third", "https://example.test/third", day=1),
+    ]))
+    service = NewsService([NewsProvider("Example", fake.fetch)])
+    match = news_service.match_article
+    calls = []
+
+    def counted_match(*args):
+        calls.append(True)
+        return match(*args)
+
+    monkeypatch.setattr(news_service, "match_article", counted_match)
+    try:
+        await service.refresh()
+        result = service.get_articles(pairs=["BTC/USD"], matched_only=matched_only, limit=1, offset=1)
+        assert [item.title for item in result] == [expected_title]
+        assert len(calls) == expected_calls
+        calls.clear()
+        assert service.get_articles(matched_only=True) == []
+        assert calls == []
     finally:
         await service.aclose()

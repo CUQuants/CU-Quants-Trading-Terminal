@@ -2,6 +2,7 @@
 
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 
 import httpx
@@ -83,6 +84,23 @@ async def test_news_returns_serializable_cached_articles_without_refetching(news
     assert data[0]["published_at"].startswith("2026-01-03T00:00:00")
     assert data[2]["published_at"] is None
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_news_cache_read_runs_in_a_worker_thread(news_client, monkeypatch):
+    client, service, _ = news_client
+    get_articles = service.get_articles
+    threads = []
+
+    def read_cache(**kwargs):
+        threads.append(threading.get_ident())
+        return get_articles(**kwargs)
+
+    monkeypatch.setattr(service, "get_articles", read_cache)
+    response = await client.get("/news")
+    assert response.status_code == 200
+    assert len(threads) == 1
+    assert threads[0] != threading.get_ident()
 
 
 @pytest.mark.asyncio
