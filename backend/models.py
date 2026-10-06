@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, Field
 from typing import Any, Literal, Optional, List
 
 
@@ -167,3 +169,100 @@ class LogPageResponse(BaseModel):
     """One filtered/paginated page of request_log."""
     logs: List[LogEntryResponse]
     next_cursor: Optional[str] = None
+
+
+# --- News ---
+
+NewsCategory = Literal["Crypto", "Trad-Fi", "FX/Macro", "Geo-Politics"]
+
+
+class NewsArticle(BaseModel):
+    """Provider-independent article; unknown publication times remain null."""
+
+    source: str
+    title: str
+    summary: str = ""
+    url: str = ""
+    published_at: Optional[datetime] = None
+    category: NewsCategory = "Trad-Fi"
+    assets: List[str] = Field(default_factory=list)
+    matched: bool = False
+    match_terms: List[str] = Field(default_factory=list)
+
+
+class NewsProviderStatus(BaseModel):
+    name: str
+    enabled: bool
+    state: Literal["disabled", "pending", "ok", "degraded", "error"]
+    disabled_reason: Optional[str] = None
+    last_attempt: Optional[datetime] = None
+    last_success: Optional[datetime] = None
+    last_error: Optional[str] = None
+    consecutive_failures: int = 0
+    total_failures: int = 0
+    article_count: int = 0
+    stale: bool = True
+
+
+class NewsStatusResponse(BaseModel):
+    refresh_interval_seconds: float
+    refreshing: bool
+    last_refresh: Optional[datetime] = None
+    last_success: Optional[datetime] = None
+    next_refresh: Optional[datetime] = None
+    article_count: int
+    stale: bool
+    providers: List[NewsProviderStatus]
+
+
+class NewsApiArticle(BaseModel):
+    """Article wire format consumed by the frontend news view."""
+
+    id: str
+    sourceId: str
+    sourceName: str
+    url: str
+    headline: str
+    publishedAt: datetime
+    excerpt: Optional[str] = None
+    category: str
+    matchedAssets: List[str] = Field(default_factory=list)
+    matchedPairs: List[str] = Field(default_factory=list)
+
+
+class NewsFeedResponse(BaseModel):
+    """Cached article page and collection freshness metadata."""
+
+    items: List[NewsApiArticle]
+    total: int
+    lastSuccessfulRefreshAt: Optional[datetime] = None
+    staleAfterSeconds: float
+
+
+class NewsSourceStatus(BaseModel):
+    """Frontend-compatible projection of provider health."""
+
+    id: str
+    name: str
+    status: Literal["healthy", "degraded", "unavailable"]
+    lastSuccessfulRefreshAt: Optional[datetime] = None
+    message: Optional[str] = None
+
+
+class NewsFilterOption(BaseModel):
+    id: str
+    label: str
+
+
+class NewsAiStatus(BaseModel):
+    status: Literal["available", "unavailable"]
+    message: Optional[str] = None
+
+
+class NewsApiStatus(BaseModel):
+    """Frontend-compatible provider and catalog status."""
+
+    checkedAt: datetime
+    sources: List[NewsSourceStatus]
+    categories: List[NewsFilterOption]
+    ai: NewsAiStatus

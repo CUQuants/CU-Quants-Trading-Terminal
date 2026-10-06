@@ -1,8 +1,9 @@
 # News frontend and backend contract
 
-The News view consumes a cached backend feed. This change implements the frontend
-only; the current backend has no `/news` routes. Until those routes are provided,
-the page displays **News unavailable**. There is no mock data or demo mode.
+The News view consumes a cached backend feed. The backend implements `/news` and
+`/news/status` for source articles and provider health. `/news/events` and validated
+Claude insights remain unavailable; select Articles to view the integrated feed.
+There is no mock data or demo mode.
 
 The TypeScript contract is in
 [`frontend/src/types/news.ts`](../frontend/src/types/news.ts). Response field names
