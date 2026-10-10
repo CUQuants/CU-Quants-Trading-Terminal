@@ -62,9 +62,16 @@ export function NewsFilters({ state, configuredPairs, status, onChange }: Props)
             <option value="all">All news</option>
           </select>
         </label>
+        <label className="flex flex-col gap-1 text-xs text-white/50">
+          Assets
+          <input type="text" value={state.assetQuery} placeholder="BTC, ETH, AAPL"
+            onChange={(e) => onChange({ ...state, assetQuery: e.target.value })}
+            className={selectClass} />
+        </label>
       </div>
+      <p className="text-xs text-white/45">Matches any selected pair or asset. Separate asset symbols or names with commas.</p>
       {configuredPairs.length === 0 ? (
-        <p className="text-xs text-white/45">No pairs configured. Showing all news; add pairs on the Dashboard to filter by your markets.</p>
+        <p className="text-xs text-white/45">No pairs configured. Add pairs on the Dashboard, or enter assets above.</p>
       ) : state.pairScope === "selected" ? (
         <fieldset className="flex flex-wrap gap-3">
           <legend className="text-xs text-white/50 mb-2">Select configured pairs</legend>

@@ -6,14 +6,16 @@ export interface NewsFilters {
   category: string | null;
   source: string | null;
   timeframe: NewsTimeframe;
-  /** Exact configured pair identifiers; an empty array requests all news. */
+  /** Exact configured pair identifiers; an empty array applies no pair filter. */
   pairs: string[];
+  assets: string[];
 }
 
-export interface NewsViewState extends Omit<NewsFilters, "pairs"> {
+export interface NewsViewState extends Omit<NewsFilters, "pairs" | "assets"> {
   mode: NewsMode;
   pairScope: "configured" | "selected" | "all";
   selectedPairs: string[];
+  assetQuery: string;
 }
 
 export const DEFAULT_NEWS_VIEW_STATE: NewsViewState = {
@@ -23,6 +25,7 @@ export const DEFAULT_NEWS_VIEW_STATE: NewsViewState = {
   timeframe: "24h",
   pairScope: "configured",
   selectedPairs: [],
+  assetQuery: "",
 };
 
 export interface Article {

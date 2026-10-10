@@ -33,6 +33,7 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
     source: state.source,
     timeframe: state.timeframe,
     pairs,
+    assets: state.assetQuery.split(",").map((asset) => asset.trim()).filter(Boolean),
   };
   const { articles, events, status } = useNews(filters, state.mode, !needsPairSelection);
   const feed = state.mode === "events" ? events : articles;
