@@ -21,7 +21,7 @@ export function NewsTime({ value, now }: { value: string | null; now: number }) 
   return <time dateTime={value} title={new Date(timestamp).toLocaleString()}>{age}</time>;
 }
 
-function SourceLink({ article, children }: { article: Article; children?: ReactNode }) {
+export function SourceLink({ article, children }: { article: Article; children?: ReactNode }) {
   // Treat all publisher URLs as untrusted, even when the rest of a report is valid.
   let safe = false;
   try {

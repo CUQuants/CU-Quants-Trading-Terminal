@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNews } from "../hooks/useNews";
 import { NewsApiError } from "../api/news";
 import { DEFAULT_NEWS_VIEW_STATE, type NewsFilters, type NewsViewState } from "../types/news";
-import { ArticleCard, NewsEventCard, NewsTime } from "./news/NewsCards";
+import { NewsTime } from "./news/NewsCards";
+import { NewsTable } from "./news/NewsTable";
 import { NewsFilters as NewsFilterControls } from "./news/NewsFilters";
 import { NewsProviderStatus } from "./news/NewsProviderStatus";
 
@@ -38,6 +39,7 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
   const { articles, events, status } = useNews(filters, state.mode, !needsPairSelection);
   const feed = state.mode === "events" ? events : articles;
   const data = feed.data;
+  const displayedPairs = [...new Set(configuredPairs)];
   const isStale = data != null && (data.lastSuccessfulRefreshAt === null
     || now - Date.parse(data.lastSuccessfulRefreshAt) >= data.staleAfterSeconds * 1000);
   const isRefreshing = feed.isFetching || status.isFetching;
@@ -50,13 +52,20 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
 
   return (
     <main className="flex-1 min-w-0" aria-label="News">
-      <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-8 border-b border-white/10 px-6 py-5">
         <div>
-          <h1 className="text-lg font-semibold">News</h1>
-          <p className="mt-1 text-xs text-white/45">Market reports, related events, and source-backed context.</p>
+          <h1 className="text-lg font-semibold whitespace-nowrap">News Hub</h1>
         </div>
+        <NewsFilterControls state={state} configuredPairs={configuredPairs} status={status.data} onChange={onStateChange} />
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-white/40">Refreshes every 45 seconds while visible</span>
+          <NewsProviderStatus data={status.data} isError={status.isError} now={now} />
+          <div className="flex flex-col items-start gap-1 border-l border-white/15 pl-4 text-left text-white/45">
+            {!needsPairSelection && data && <span>Showing {data.items.length} of {data.total} {state.mode}</span>}
+            <span>Refreshes every 45 seconds while visible</span>
+            {!needsPairSelection && data && (
+              <span>Last successful collection: <NewsTime value={data.lastSuccessfulRefreshAt} now={now} /></span>
+            )}
+          </div>
           <button type="button" onClick={refresh} disabled={isRefreshing}
             className="rounded-md border border-white/15 px-3 py-2 text-white/75 hover:bg-white/5 cursor-pointer disabled:opacity-40 disabled:cursor-default">
             {isRefreshing ? "Refreshing…" : "Refresh"}
@@ -64,18 +73,30 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
         </div>
       </div>
 
-      <NewsFilterControls state={state} configuredPairs={configuredPairs} status={status.data} onChange={onStateChange} />
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-1.5 text-xs text-white/50" aria-label="Configured pairs">
+        {displayedPairs.length === 0 ? "No pairs configured." : (
+          <>
+            <span>Pairs:</span>
+            {displayedPairs.map((pair) => {
+              const isSelected = state.pairScope === "selected" && pairs.length === 1 && pairs[0] === pair;
+              return (
+                <button key={pair} type="button" aria-pressed={isSelected}
+                  onClick={() => onStateChange({ ...state, pairScope: isSelected ? "all" : "selected", selectedPairs: isSelected ? [] : [pair] })}
+                  className={`rounded border px-2 py-0.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2F71C8] ${isSelected ? "border-[#2F71C8] bg-[#2F71C8]/20 text-white" : "border-white/15 bg-white/[0.04] text-white/75 hover:border-[#2F71C8]/60 hover:text-white"}`}>
+                  {pair}
+                </button>
+              );
+            })}
+          </>
+        )}
+      </div>
 
-      <div className="px-6 py-4 space-y-4">
-        <NewsProviderStatus data={status.data} isError={status.isError} now={now} />
-
-        {!needsPairSelection && data && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/45">
-              <span>Showing {data.items.length} of {data.total} {state.mode}
-                {data.total > data.items.length ? " · Latest results only; narrow filters for more specific coverage" : ""}</span>
-              <span>Last successful collection: <NewsTime value={data.lastSuccessfulRefreshAt} now={now} /></span>
-            </div>
+      <div>
+        {!needsPairSelection && data && (data.total > data.items.length || isStale || feed.isError) && (
+          <div className="px-4 py-3 space-y-3">
+            {data.total > data.items.length && (
+              <p className="text-xs text-white/45">Latest results only; narrow filters for more specific coverage.</p>
+            )}
             {isStale && (
               <p role="status" className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-200">
                 {data.lastSuccessfulRefreshAt === null
@@ -120,14 +141,8 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
               Clear filters
             </button>
           </div>
-        ) : state.mode === "events" ? (
-          <div className="space-y-4">
-            {events.data?.items.map((event) => <NewsEventCard key={event.id} event={event} now={now} categoryLabel={categoryLabel(event.category)} />)}
-          </div>
         ) : (
-          <div className="space-y-4">
-            {articles.data?.items.map((article) => <ArticleCard key={article.id} article={article} now={now} categoryLabel={categoryLabel(article.category)} />)}
-          </div>
+          <NewsTable items={data.items} now={now} categoryLabel={categoryLabel} />
         )}
       </div>
     </main>

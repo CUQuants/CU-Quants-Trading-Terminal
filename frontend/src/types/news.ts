@@ -19,7 +19,7 @@ export interface NewsViewState extends Omit<NewsFilters, "pairs" | "assets"> {
 }
 
 export const DEFAULT_NEWS_VIEW_STATE: NewsViewState = {
-  mode: "events",
+  mode: "articles",
   category: null,
   source: null,
   timeframe: "24h",
