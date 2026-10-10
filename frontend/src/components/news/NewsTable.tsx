@@ -71,7 +71,7 @@ export function NewsTable({ items, now, categoryLabel }: Props) {
                 </td>
                 <td className="px-4 py-3 text-white/60 truncate" title={categoryLabel(item.category)}>{categoryLabel(item.category)}</td>
                 <td className="px-4 py-3">
-                  <div className="font-medium leading-snug truncate" title={linkText}>
+                  <div className="relative font-medium leading-snug truncate" title={linkText}>
                     {article ? <SourceLink article={article}>{previewText(linkText)}</SourceLink> : <span>{previewText(linkText)}</span>}
                   </div>
                 </td>

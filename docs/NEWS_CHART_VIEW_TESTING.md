@@ -8,7 +8,7 @@ npm run test:news
 npx eslint src/components/NewsView.tsx src/components/news src/types/news.ts
 ```
 
-The 11 UI regression tests cover table columns and placeholders, excerpt/headline fallback, safe external links, 24-word previews, timestamp color boundaries and invalid dates, grouped-event source selection, and the Articles default/order. They bundle the actual production components with esbuild and render them with React's server renderer.
+The 12 UI regression tests cover table columns and placeholders, excerpt/headline fallback, safe external links, 24-word previews, timestamp color boundaries and invalid dates, grouped-event source selection, and the Articles default/order. They bundle the actual production components with esbuild and render them with React's server renderer.
 
 Run the isolated News backend contract tests from the repository root:
 
@@ -19,7 +19,7 @@ python -m pytest backend/tests/test_news_lifespan.py backend/tests/test_news_nor
 ## Results on 2026-10-10
 
 - Production TypeScript/Vite build: passed.
-- News UI regression tests: 11 passed.
+- News UI regression tests: 12 passed.
 - Focused News frontend lint: passed.
 - News backend contract tests: 145 passed, one existing Starlette deprecation warning.
 - Full backend suite: 185 passed, 12 failed. Nine failures are in the unimplemented Gemini service, two in Kraken (balance normalization and an order lifecycle test returning `EAPI:Invalid key`), and one in OKX order stream status emission. These source files were unchanged from the starting commit. The Kraken lifecycle test invokes the exchange API despite its `simulated=True` fixture; use the isolated News command above for this frontend work.
@@ -38,3 +38,9 @@ python -m pytest backend/tests/test_news_lifespan.py backend/tests/test_news_nor
 - Live grouped events cannot be exercised against the currently running service, which returns News unavailable for that endpoint. Their rendering is covered by the UI regression tests.
 
 The extra coin subscriptions were browser-local review configuration; this PR does not change default trading pairs.
+
+## Populated-feed overflow regression
+
+- Reproduced horizontal overflow with six live article rows at 1280px: document width was 1668px. The absolutely positioned screen-reader link suffix escaped the truncated headline container.
+- Positioned the headline container so the accessible link suffix stays contained, preserving single-line truncation and all columns.
+- Retested the populated feed at 320, 390, 624, 768, 1024, 1280, 1335, 1800, and 2737px. Document and table width equal the viewport in every case, and all six columns remain visible.
