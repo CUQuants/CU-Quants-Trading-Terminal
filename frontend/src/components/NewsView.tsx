@@ -73,7 +73,7 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-white/10 bg-white/[0.03] px-4 py-1.5 text-xs text-white/50 [&>button]:shrink-0" aria-label="Configured pairs">
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-1.5 text-xs text-white/50 [&>button]:shrink-0" aria-label="Configured pairs">
         {displayedPairs.length === 0 ? "No pairs configured." : (
           <>
             <span>Pairs:</span>

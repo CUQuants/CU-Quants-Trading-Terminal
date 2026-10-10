@@ -25,7 +25,7 @@ function postedColor(postedAt: string, now: number) {
 
 export function NewsTable({ items, now, categoryLabel }: Props) {
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full min-w-0">
       <table className="w-full table-fixed text-left text-xs sm:text-sm [&_td]:px-2 [&_th]:px-2 sm:[&_td]:px-4 sm:[&_th]:px-4">
         <caption className="sr-only">News feed. Asset price changes are not connected yet.</caption>
         <colgroup>

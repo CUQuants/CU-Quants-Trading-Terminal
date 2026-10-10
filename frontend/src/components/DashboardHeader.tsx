@@ -58,7 +58,7 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
 
   return (
     <header className="flex flex-wrap justify-between items-center gap-4 px-6 py-4 border-b border-white/10 bg-gradient-to-r from-white/[0.03] to-transparent">
-      <div className="flex flex-wrap items-center gap-6">
+      <div className="min-w-0 flex flex-wrap items-center gap-3 sm:gap-6">
         <div className="flex items-center gap-3">
           <img src={quantsLogo} alt="" className="h-9 w-auto object-contain" />
           <div className="flex flex-col gap-0.5">
@@ -69,7 +69,7 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 bg-white/[0.03] rounded-lg p-1 border border-white/5">
+        <div className="min-w-0 flex flex-wrap items-center gap-1 bg-white/[0.03] rounded-lg p-1 border border-white/5">
           <TabButton
             label="Dashboard"
             active={currentView === "dashboard"}

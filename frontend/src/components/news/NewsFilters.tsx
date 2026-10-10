@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { NewsStatus, NewsViewState } from "../../types/news";
 
 interface Props {
@@ -7,17 +8,23 @@ interface Props {
   onChange: (state: NewsViewState) => void;
 }
 
-const selectClass = "h-10 rounded-md border border-white/15 bg-[#111] px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-sky-400/60";
+const selectClass = "h-10 min-w-0 w-full rounded-md border border-white/15 bg-[#111] px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-sky-400/60";
 
 export function NewsFilters({ state, configuredPairs, status, onChange }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const categories = status?.categories ?? [];
   const sources = status?.sources ?? [];
   const selectedPairs = state.selectedPairs.filter((pair) => configuredPairs.includes(pair));
 
   return (
-    <div className="order-3 col-span-2 min-w-0 flex-1 min-[1800px]:order-none">
-      <div className="flex items-center gap-3 overflow-x-auto pt-5 pb-1 min-[1800px]:overflow-visible min-[1800px]:py-0 [&>label]:shrink-0">
-        <div className="flex h-10 shrink-0 rounded-md border border-white/15 p-1 gap-1" role="group" aria-label="News display">
+    <div className="relative order-3 col-span-2 min-w-0 flex-1 min-[1800px]:order-none">
+      <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}
+        className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/75 cursor-pointer min-[1800px]:hidden">
+        Filters · {state.mode === "articles" ? "Articles" : "Grouped events"}
+      </button>
+      <div className={`${expanded ? "block" : "hidden"} absolute inset-x-0 top-full z-30 mt-2 max-h-[60vh] overflow-y-auto rounded-lg border border-white/15 bg-[#111] p-4 shadow-xl min-[1800px]:static min-[1800px]:block min-[1800px]:m-0 min-[1800px]:max-h-none min-[1800px]:overflow-visible min-[1800px]:border-0 min-[1800px]:bg-transparent min-[1800px]:p-0 min-[1800px]:shadow-none`}>
+      <div className="grid grid-cols-2 items-center gap-x-3 gap-y-7 pt-4 min-[1800px]:flex min-[1800px]:gap-3 min-[1800px]:pt-0 [&>label]:min-w-0">
+        <div className="col-span-2 flex h-10 shrink-0 w-fit rounded-md border border-white/15 p-1 gap-1" role="group" aria-label="News display">
           {(["articles", "events"] as const).map((mode) => (
             <button key={mode} type="button" aria-pressed={state.mode === mode} onClick={() => onChange({ ...state, mode })}
               className={`rounded px-3 text-sm whitespace-nowrap cursor-pointer ${state.mode === mode ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"}`}>
@@ -70,7 +77,7 @@ export function NewsFilters({ state, configuredPairs, status, onChange }: Props)
         </label>
       </div>
       {configuredPairs.length > 0 && state.pairScope === "selected" ? (
-        <fieldset className="flex gap-3 overflow-x-auto whitespace-nowrap py-2 [&>label]:shrink-0">
+        <fieldset className="flex flex-wrap gap-3 py-2">
           <legend className="text-xs text-white/50 mb-2">Select configured pairs</legend>
           {configuredPairs.map((pair) => (
             <label key={pair} className="flex items-center gap-2 text-xs text-white/75 cursor-pointer">
@@ -81,6 +88,7 @@ export function NewsFilters({ state, configuredPairs, status, onChange }: Props)
           ))}
         </fieldset>
       ) : null}
+      </div>
     </div>
   );
 }
