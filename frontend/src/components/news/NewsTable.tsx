@@ -26,23 +26,23 @@ function postedColor(postedAt: string, now: number) {
 export function NewsTable({ items, now, categoryLabel }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[960px] table-fixed text-left text-sm">
+      <table className="w-full table-fixed text-left text-xs sm:text-sm [&_td]:px-2 [&_th]:px-2 sm:[&_td]:px-4 sm:[&_th]:px-4">
         <caption className="sr-only">News feed. Asset price changes are not connected yet.</caption>
         <colgroup>
-          <col className="w-28" />
-          <col className="w-40" />
-          <col className="w-36" />
-          <col className="w-32" />
-          <col className="w-40" />
+          <col className="w-16 sm:w-24 lg:w-28" />
+          <col className="w-20 sm:w-28 lg:w-40" />
+          <col className="hidden lg:table-column w-36" />
+          <col className="hidden xl:table-column w-32" />
+          <col className="hidden md:table-column w-24 lg:w-40" />
           <col />
         </colgroup>
         <thead className="bg-white/[0.07] text-xs text-white/60">
           <tr>
             <th scope="col" className="px-4 py-3 font-medium">Posted</th>
             <th scope="col" className="px-4 py-3 font-medium">Asset name</th>
-            <th scope="col" className="px-4 py-3 font-medium">Pairs</th>
-            <th scope="col" className="px-4 py-3 text-right font-medium">Price change</th>
-            <th scope="col" className="px-4 py-3 font-medium">Category</th>
+            <th scope="col" className="hidden lg:table-cell px-4 py-3 font-medium">Pairs</th>
+            <th scope="col" className="hidden xl:table-cell px-4 py-3 text-right font-medium">Price change</th>
+            <th scope="col" className="hidden md:table-cell px-4 py-3 font-medium">Category</th>
             <th scope="col" className="px-4 py-3 font-medium">Excerpt / headline</th>
           </tr>
         </thead>
@@ -63,13 +63,13 @@ export function NewsTable({ items, now, categoryLabel }: Props) {
                 <th scope="row" className="px-4 py-3 font-medium text-white/85 truncate" title={item.matchedAssets.join(", ") || "General market"}>
                   {item.matchedAssets.length ? item.matchedAssets.join(", ") : "General market"}
                 </th>
-                <td className="px-4 py-3 text-xs text-white/60 truncate" title={item.matchedPairs.join(", ")}>
+                <td className="hidden lg:table-cell px-4 py-3 text-xs text-white/60 truncate" title={item.matchedPairs.join(", ")}>
                   {item.matchedPairs.length ? item.matchedPairs.join(", ") : "—"}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-white/35">
+                <td className="hidden xl:table-cell px-4 py-3 text-right tabular-nums text-white/35">
                   <span aria-label="Asset price change not connected" title="Asset price change not connected">—</span>
                 </td>
-                <td className="px-4 py-3 text-xs text-white/60 truncate" title={categoryLabel(item.category)}>{categoryLabel(item.category)}</td>
+                <td className="hidden md:table-cell px-4 py-3 text-xs text-white/60 truncate" title={categoryLabel(item.category)}>{categoryLabel(item.category)}</td>
                 <td className="px-4 py-3">
                   <div className="font-medium leading-snug truncate" title={linkText}>
                     {article ? <SourceLink article={article}>{previewText(linkText)}</SourceLink> : <span>{previewText(linkText)}</span>}

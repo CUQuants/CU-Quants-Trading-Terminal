@@ -6,7 +6,7 @@ export function NewsProviderStatus({ data, isError, now }: { data?: NewsStatus; 
     <details className="relative shrink-0 text-xs text-white/50">
       <summary className="cursor-pointer rounded-md border border-white/15 px-3 py-2 hover:bg-white/5">
         {isError ? "Last known provider status" : "Provider status"}
-        {data && <> · Checked <NewsTime value={data.checkedAt} now={now} /></>}
+        {data && <span className="hidden sm:inline"> · Checked <NewsTime value={data.checkedAt} now={now} /></span>}
       </summary>
       <div className="absolute right-0 z-20 mt-2 w-96 max-w-[calc(100vw-3rem)] rounded-lg border border-white/15 bg-[#111] p-4 space-y-3 shadow-xl">
       {isError && (

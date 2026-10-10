@@ -50,6 +50,13 @@ test('table exposes all six accessible columns and price placeholder', () => {
   for (const label of ['Posted', 'Asset name', 'Pairs', 'Price change', 'Category', 'Excerpt / headline']) assert.ok(html.includes(label));
   assert.ok(html.includes('Asset price change not connected'));
 });
+test('empty feeds retain the chart column headers', () => {
+  const html = ui.renderToStaticMarkup(ui.createElement(ui.NewsTable, {
+    items: [], now, categoryLabel: () => 'Crypto',
+  }));
+  assert.equal((html.match(/scope="col"/g) ?? []).length, 6);
+  assert.ok(html.includes('<tbody'));
+});
 test('excerpt supplies link text with full text available as a tooltip', () => {
   const html = table();
   assert.ok(html.includes('title="Extracted report excerpt"'));

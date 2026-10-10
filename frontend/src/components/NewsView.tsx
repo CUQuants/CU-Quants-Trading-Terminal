@@ -52,14 +52,14 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
 
   return (
     <main className="flex-1 min-w-0" aria-label="News">
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-8 border-b border-white/10 px-6 py-5">
+      <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 border-b border-white/10 px-4 py-2 min-[1800px]:flex min-[1800px]:gap-6 min-[1800px]:px-6 min-[1800px]:py-5">
         <div>
           <h1 className="text-lg font-semibold whitespace-nowrap">News Hub</h1>
         </div>
         <NewsFilterControls state={state} configuredPairs={configuredPairs} status={status.data} onChange={onStateChange} />
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="flex justify-end items-center gap-2 text-xs min-[1800px]:gap-3">
           <NewsProviderStatus data={status.data} isError={status.isError} now={now} />
-          <div className="flex flex-col items-start gap-1 border-l border-white/15 pl-4 text-left text-white/45">
+          <div className="hidden md:flex flex-col items-start gap-1 border-l border-white/15 pl-4 text-left text-white/45">
             {!needsPairSelection && data && <span>Showing {data.items.length} of {data.total} {state.mode}</span>}
             <span>Refreshes every 45 seconds while visible</span>
             {!needsPairSelection && data && (
@@ -73,7 +73,7 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-1.5 text-xs text-white/50" aria-label="Configured pairs">
+      <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-white/10 bg-white/[0.03] px-4 py-1.5 text-xs text-white/50 [&>button]:shrink-0" aria-label="Configured pairs">
         {displayedPairs.length === 0 ? "No pairs configured." : (
           <>
             <span>Pairs:</span>
@@ -133,6 +133,8 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
             </p>
           </div>
         ) : data.items.length === 0 ? (
+          <>
+          <NewsTable items={[]} now={now} categoryLabel={categoryLabel} />
           <div role="status" className="py-16 text-center">
             <h2 className="text-base text-white/75">{data.lastSuccessfulRefreshAt === null ? "Waiting for news" : "No news matches these filters"}</h2>
             <p className="mt-2 text-sm text-white/45">Try a wider timeframe or all news.</p>
@@ -141,6 +143,7 @@ export function NewsView({ configuredPairs, state, onStateChange }: Props) {
               Clear filters
             </button>
           </div>
+          </>
         ) : (
           <NewsTable items={data.items} now={now} categoryLabel={categoryLabel} />
         )}

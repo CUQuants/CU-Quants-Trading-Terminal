@@ -15,8 +15,8 @@ export function NewsFilters({ state, configuredPairs, status, onChange }: Props)
   const selectedPairs = state.selectedPairs.filter((pair) => configuredPairs.includes(pair));
 
   return (
-    <div className="min-w-0 flex-1 space-y-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-8">
+    <div className="order-3 col-span-2 min-w-0 flex-1 min-[1800px]:order-none">
+      <div className="flex items-center gap-3 overflow-x-auto pt-5 pb-1 min-[1800px]:overflow-visible min-[1800px]:py-0 [&>label]:shrink-0">
         <div className="flex h-10 shrink-0 rounded-md border border-white/15 p-1 gap-1" role="group" aria-label="News display">
           {(["articles", "events"] as const).map((mode) => (
             <button key={mode} type="button" aria-pressed={state.mode === mode} onClick={() => onChange({ ...state, mode })}
@@ -70,7 +70,7 @@ export function NewsFilters({ state, configuredPairs, status, onChange }: Props)
         </label>
       </div>
       {configuredPairs.length > 0 && state.pairScope === "selected" ? (
-        <fieldset className="flex flex-wrap gap-3">
+        <fieldset className="flex gap-3 overflow-x-auto whitespace-nowrap py-2 [&>label]:shrink-0">
           <legend className="text-xs text-white/50 mb-2">Select configured pairs</legend>
           {configuredPairs.map((pair) => (
             <label key={pair} className="flex items-center gap-2 text-xs text-white/75 cursor-pointer">

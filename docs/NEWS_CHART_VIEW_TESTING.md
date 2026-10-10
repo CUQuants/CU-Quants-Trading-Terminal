@@ -34,7 +34,7 @@ python -m pytest backend/tests/test_news_lifespan.py backend/tests/test_news_nor
 - A pair with no reports and an unavailable source produce the empty-state message; Clear filters restores results.
 - Provider status opens in the header and contains missing configuration details.
 - At the annotated 2737 x 1290 desktop viewport, the heading and all filter controls share the header's vertical center, the table spans the window, and rows remain one line. The header padding is reduced from 28 to 20 pixels on each side vertically.
-- At 390 x 844, the News section remains within the viewport and its 960-pixel table scrolls inside its own container. The existing app shell still has horizontal page overflow; this change does not repair that shell.
+- Responsive follow-up: tested 390, 768, 1280, 1536, and 2737-pixel window widths. Filters and pairs use horizontal strips, keeping header height bounded. The chart fits the News section at each width: time, asset, and headline stay visible on phones; category returns at 768px, pairs at 1024px, and price change at 1280px. Empty feeds keep chart headers visible. The existing app shell still has horizontal page overflow; this change does not repair that shell.
 - Live grouped events cannot be exercised against the currently running service, which returns News unavailable for that endpoint. Their rendering is covered by the UI regression tests.
 
 The extra coin subscriptions were browser-local review configuration; this PR does not change default trading pairs.
