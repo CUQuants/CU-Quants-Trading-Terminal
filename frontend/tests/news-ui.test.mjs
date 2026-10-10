@@ -47,6 +47,7 @@ function table(item = article) {
 test('table exposes all six accessible columns and price placeholder', () => {
   const html = table();
   assert.equal((html.match(/scope="col"/g) ?? []).length, 6);
+  assert.ok(!/class="[^"]*\bhidden\b/.test(html));
   for (const label of ['Posted', 'Asset name', 'Pairs', 'Price change', 'Category', 'Excerpt / headline']) assert.ok(html.includes(label));
   assert.ok(html.includes('Asset price change not connected'));
 });
