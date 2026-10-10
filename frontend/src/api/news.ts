@@ -124,6 +124,8 @@ function queryString(filters: NewsFilters): string {
   if (filters.category) params.set("category", filters.category);
   if (filters.source) params.set("source", filters.source);
   for (const pair of [...new Set(filters.pairs)].sort()) params.append("pair", pair);
+  for (const asset of [...new Set(filters.assets)].sort()) params.append("assets", asset);
+  if (filters.pairs.length > 0 || filters.assets.length > 0) params.set("matched_only", "true");
   return params.toString();
 }
 

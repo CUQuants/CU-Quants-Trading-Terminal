@@ -33,10 +33,13 @@ grouping, asset matching, and Claude processing are separate backend work.
 | `source` | Optional source ID; omitted means all sources. |
 | `timeframe` | `1h`, `24h`, or `7d`; the frontend defaults to `24h`. Evaluate relative to the server's current time. |
 | `pair` | Repeated exact configured pair strings, such as `pair=BTC%2FUSD&pair=ETH%2FUSD`. Omitted means all news. |
+| `assets` | Repeated asset symbols or names, such as `assets=BTC&assets=Ethereum`. The Assets input accepts comma-separated values. |
+| `matched_only` | The frontend sends `true` when pairs or assets are selected, so the feed contains only relevant reports. Omitted for unrestricted news. |
 | `limit` | Frontend requests `100`. Return at most that many items. |
 
-Different filter dimensions combine with AND. Multiple requested pairs combine
-with OR. Match articles by `publishedAt`, events by `updatedAt`. Matching belongs
+Category, source, timeframe, and market relevance combine with AND. Requested
+pairs and assets form one relevance filter and combine with OR. Match articles
+by `publishedAt`, events by `updatedAt`. Matching belongs
 entirely to the backend, including ticker aliases, currency differences, and asset
 relevance. The browser sorts and deduplicates pair strings but never translates
 them. Matching is asset/pair-based, not restricted to a trading exchange.

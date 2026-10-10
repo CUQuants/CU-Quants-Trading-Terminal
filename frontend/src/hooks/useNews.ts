@@ -15,7 +15,11 @@ const queryOptions = {
 
 /** Mounted only in NewsView; inactive feed modes never poll. */
 export function useNews(filters: NewsFilters, mode: NewsMode, enabled = true) {
-  const normalizedFilters = { ...filters, pairs: [...new Set(filters.pairs)].sort() };
+  const normalizedFilters = {
+    ...filters,
+    pairs: [...new Set(filters.pairs)].sort(),
+    assets: [...new Set(filters.assets)].sort(),
+  };
   const keyFilters = { ...normalizedFilters, limit: NEWS_LIMIT };
 
   const articles = useQuery({

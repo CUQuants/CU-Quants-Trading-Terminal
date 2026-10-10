@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 import type { Article, Insight, InsightStatement, NewsEvent } from "../../types/news";
 
+const EXCERPT_LIMIT = 300;
+
+function excerptPreview(excerpt: string): string {
+  if (excerpt.length <= EXCERPT_LIMIT) return excerpt;
+  const preview = excerpt.slice(0, EXCERPT_LIMIT - 1);
+  return `${preview.replace(/\s+\S*$/, "").trimEnd()}…`;
+}
+
 export function NewsTime({ value, now }: { value: string | null; now: number }) {
   if (!value) return <span>Never</span>;
   const timestamp = Date.parse(value);
@@ -13,7 +21,7 @@ export function NewsTime({ value, now }: { value: string | null; now: number }) 
   return <time dateTime={value} title={new Date(timestamp).toLocaleString()}>{age}</time>;
 }
 
-function SourceLink({ article, children }: { article: Article; children?: ReactNode }) {
+export function SourceLink({ article, children }: { article: Article; children?: ReactNode }) {
   // Treat all publisher URLs as untrusted, even when the rest of a report is valid.
   let safe = false;
   try {
@@ -97,7 +105,7 @@ export function ArticleCard({ article, now, categoryLabel }: { article: Article;
       {article.excerpt && (
         <div className="border-t border-white/10 pt-3">
           <p className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Source-reported excerpt</p>
-          <p className="text-sm leading-relaxed text-white/70 whitespace-pre-line">{article.excerpt}</p>
+          <p className="text-sm leading-relaxed text-white/70 whitespace-pre-line">{excerptPreview(article.excerpt)}</p>
         </div>
       )}
     </article>
@@ -125,7 +133,7 @@ export function NewsEventCard({ event, now, categoryLabel }: { event: NewsEvent;
             <li key={article.id} className="border-t border-white/10 pt-3 text-sm">
               <p className="mb-1 text-xs text-white/40">{article.sourceName} · <NewsTime value={article.publishedAt} now={now} /></p>
               <SourceLink article={article} />
-              {article.excerpt && <p className="mt-2 text-white/65 leading-relaxed whitespace-pre-line">{article.excerpt}</p>}
+              {article.excerpt && <p className="mt-2 text-white/65 leading-relaxed whitespace-pre-line">{excerptPreview(article.excerpt)}</p>}
             </li>
           ))}
         </ul>
