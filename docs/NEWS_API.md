@@ -1,8 +1,8 @@
 # News frontend and backend contract
 
-The News view consumes a cached backend feed. This change implements the frontend
-only; the current backend has no `/news` routes. Until those routes are provided,
-the page displays **News unavailable**. There is no mock data or demo mode.
+The News view consumes a cached backend feed. The backend implements `/news`,
+`/news/events`, and `/news/status`; there is no mock data or browser-only demo
+mode.
 
 The TypeScript contract is in
 [`frontend/src/types/news.ts`](../frontend/src/types/news.ts). Response field names
@@ -149,14 +149,15 @@ npm run lint
 npm run build
 ```
 
-There is no added test runner, mock service worker, fixture set, automated
-integration test suite, or backend stub. Browser checks use actual services.
+Backend tests cover provider normalization, caching, grouping, filters, Claude
+validation, failure handling, and the provider-to-API flow with a mocked Claude
+HTTP boundary. Browser checks use actual services.
 
 Manual checks:
 
 1. Start the terminal using [DEV_TESTING.md](../DEV_TESTING.md), open News, and
-   confirm fourth-tab navigation. Before backend integration, expect the
-   unavailable state; other views must remain usable.
+   confirm fourth-tab navigation and a successful feed load. Other views must
+   remain usable.
 2. With actual news routes connected, verify category/source/timeframe/pair
    requests in the browser Network panel. Check configured-pair defaults, no-pair
    fallback, subset selection, and filter persistence across view changes.
@@ -171,8 +172,7 @@ Manual checks:
 6. Check Dashboard, Trades, and Account normally. Any placement/cancellation
    checks use the documented OKX demo setup, not live trading.
 
-Backend follow-up work must implement these contracts, ingestion/cache/grouping,
-asset matching, and Claude generation/validation. Feedback remains deferred.
+User feedback and persistent storage remain deferred.
 
 ### Initial frontend verification (2026-09-22)
 

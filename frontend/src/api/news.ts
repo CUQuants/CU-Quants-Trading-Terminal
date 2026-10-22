@@ -37,7 +37,7 @@ function isStrings(value: unknown): value is string[] {
 }
 
 function isOptionalText(value: unknown): boolean {
-  return value === undefined || typeof value === "string";
+  return value == null || typeof value === "string";
 }
 
 function isArticle(value: unknown): value is Article {

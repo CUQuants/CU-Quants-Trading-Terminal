@@ -40,8 +40,8 @@ cd ../CU-Quants-Trading-Terminal
 cp backend/.env.example backend/.env
 ```
 
-Fill in `backend/.env` from the gateway's creds output. **The names differ** —
-map them:
+`scripts/dev-local.sh` reads the generated gateway credentials and passes them
+to the backend. If you start the backend directly, map the names in `backend/.env`:
 
 | `backend/.env` (terminal's name) | value / source |
 |---|---|
@@ -51,12 +51,23 @@ map them:
 | `CUQ_PROXY_OPERATOR_ID` | gateway's `CUQ_OPERATOR_ID` (`cuq-002`) |
 | `CUQ_PROXY_OPERATOR_NAME` | gateway's `CUQ_OPERATOR_NAME` |
 
-All five are mandatory — the backend builds `ServiceContainer` at startup and
-won't boot without them. Leave `CUQ_PROXY_WS_URL` unset; the SDK derives
+All five are mandatory when starting the backend directly. Leave
+`CUQ_PROXY_WS_URL` unset; the SDK derives
 `ws://127.0.0.1:8080/v1/okx/ws` from `CUQ_PROXY_URL`.
 
 Kraken still calls direct — set `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` if you'll
 open a Kraken view; leave blank for OKX-only testing.
+
+For Claude news insights, also set:
+
+```dotenv
+ANTHROPIC_API_KEY=your-claude-api-key
+CLAUDE_MODEL=your-approved-claude-model
+```
+
+News works without Claude: original articles and grouped events still appear,
+but insights are marked unavailable. Yahoo Finance is enabled by default and
+needs no key. Other optional news providers are listed in `backend/.env.example`.
 
 ## 3 — Run backend + frontend
 
@@ -69,8 +80,9 @@ Runs both natively, no Docker, and tears both down on Ctrl-C:
 - backend  — `http://127.0.0.1:8000` (reads `backend/.env`)
 - dashboard — `http://127.0.0.1:5173`
 
-The script checks `backend/.env` has the five `CUQ_PROXY_*` vars and pings the
-gateway's `/healthz` first (warns if it's down). First run does `uv sync` and
+The script uses the gateway's `.env.dev-credentials` when present, checks
+`backend/.env` for the five `CUQ_PROXY_*` vars otherwise, and pings the gateway's
+`/healthz` first (warns if it's down). First run does `uv sync --extra news` and
 `npm install`; `SKIP_INSTALL=1` skips that. Override ports with `BACKEND_PORT` /
 `FRONTEND_PORT` (the frontend is pointed at the backend via `VITE_API_URL`
 automatically).
@@ -85,6 +97,18 @@ curl -s localhost:8000/account/balances/okx | head -c 400
 
 A balance JSON means the whole path works: SDK signing → gateway auth → action
 allowlist → `x-simulated-trading: 1` → OKX demo → audit row.
+
+Check the News backend separately:
+
+```bash
+curl -s localhost:8000/news/status
+curl -s "localhost:8000/news?timeframe=24h&limit=5"
+curl -s "localhost:8000/news/events?timeframe=24h&limit=5"
+```
+
+`/news/status` shows which sources are healthy and whether Claude can create new
+insights. Feed requests read the backend cache; they do not call providers or
+Claude on every browser refresh.
 
 ## 5 — Place a test order
 
@@ -145,10 +169,10 @@ Leaving `CUQ_REPORTING_URL` unset is fine — trading still works, and
 ## What is NOT covered
 
 For News contracts and its manual browser checklist, see
-[News frontend and backend contract](docs/NEWS_API.md). The current backend does
-not implement the news endpoints, so News displays an unavailable state until
-integration. Frontend checks remain `npm run lint`, `npm run build`, and manual
-browser verification; there are no news mocks or automated integration tests.
+[News frontend and backend contract](docs/NEWS_API.md). Backend unit and
+integration tests use fake providers and a mocked Claude boundary, so they do
+not spend API credits or prove that deployment credentials are valid. The final
+demo still needs one live provider refresh and one live Claude response.
 
 - `docker compose up` — that path still works for a containerised run, but a
   backend container can't reach a gateway on the host's `127.0.0.1:8080`
