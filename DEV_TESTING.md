@@ -55,8 +55,10 @@ All five are mandatory — the backend builds `ServiceContainer` at startup and
 won't boot without them. Leave `CUQ_PROXY_WS_URL` unset; the SDK derives
 `ws://127.0.0.1:8080/v1/okx/ws` from `CUQ_PROXY_URL`.
 
-Kraken still calls direct — set `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` if you'll
-open a Kraken view; leave blank for OKX-only testing.
+Kraken goes through the gateway too, as exchange `kraken_prime`. For the Kraken
+view to place orders, the gateway needs `KRAKEN_PRIME_API_KEY`,
+`KRAKEN_PRIME_API_SECRET` and `KRAKEN_PRIME_ACCOUNT_ID` set (see the gateway's
+`.env.example`). Nothing Kraken-specific goes in the terminal's `.env`.
 
 ## 3 — Run backend + frontend
 

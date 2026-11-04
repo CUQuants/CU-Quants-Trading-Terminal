@@ -18,9 +18,8 @@ from models import (
 class ExchangeService(ABC):
 
     def __init__(self, base_url: str | None = None):
-        # Only services that still call an exchange directly (Kraken, until
-        # its own migration) use `base_url` / `_request`. OKX goes through
-        # the Proxy and touches neither.
+        # Only services that still call an exchange directly use `base_url` /
+        # `_request`. OKX and Kraken go through the Proxy and touch neither.
         self.base_url = base_url
 
     async def _request(self, method: str, path: str, body: str = None, headers: dict = None) -> dict:

@@ -16,8 +16,8 @@ class ServiceContainer:
     def __init__(self):
         self.services: Dict[str, ExchangeService] = {}
         self.available_services: List[str] = ["okx", "kraken"]
-        # One credential for the whole process. OKX rides this; Kraken still
-        # holds its own key directly until its migration.
+        # One credential for the whole process. OKX and Kraken (the club's
+        # Prime account, as gateway exchange `kraken_prime`) both ride it.
         self._proxy = ProxySession.from_env()
         # Optional: the audit-reporting API is a separate service that may
         # not be stood up yet on every deployment. Unlike ProxySession, its
@@ -41,7 +41,7 @@ class ServiceContainer:
         if service_name == "okx":
             return OkxService(self._proxy)
         if service_name == "kraken":
-            return KrakenService(base_url="https://api.kraken.com")
+            return KrakenService(self._proxy)
         raise ValueError(f"No factory registered for service: {service_name}")
 
     async def aclose(self) -> None:
