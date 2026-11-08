@@ -1,279 +1,367 @@
-import sys
+"""Unit tests for KrakenService, driven through a fake ProxySession.
+
+KrakenService no longer signs its own requests. It calls
+`ProxySession.call("kraken_prime", <action>, <payload>)`, and the gateway
+returns Kraken's own body unreshaped (`{"error": [], "result": {...}}`).
+These tests stub that one method and check the payloads sent and the
+parsing of what comes back.
+"""
+
 import os
-from unittest.mock import AsyncMock, patch
+import sys
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from exchange_services.kraken_service import KrakenService
+from proxy_client.errors import ActionNotPermittedError, ExchangeError
+
+from exchange_services.kraken_service import EXCHANGE, KrakenService
 from models import PlaceOrderRequest, TradeResponse
 
 
+class FakeProxy:
+    """Stands in for ProxySession. Records calls; returns canned bodies (or
+    raises a canned exception) keyed by action."""
+
+    def __init__(self):
+        self.calls = []
+        self._responses = {}
+
+    def set(self, action, response):
+        self._responses[action] = response
+
+    async def call(self, exchange, action, payload=None, *, idempotency_key=""):
+        self.calls.append({"exchange": exchange, "action": action, "payload": payload,
+                           "idempotency_key": idempotency_key})
+        r = self._responses.get(action)
+        if isinstance(r, Exception):
+            raise r
+        return r if r is not None else {"error": [], "result": {}}
+
+    @property
+    def last(self):
+        return self.calls[-1]
+
+
 @pytest.fixture
-def kraken():
-    return KrakenService(base_url="https://api.kraken.com", simulated=True)
+def proxy():
+    return FakeProxy()
+
+
+@pytest.fixture
+def kraken(proxy):
+    return KrakenService(proxy)
+
+
+def kraken_rejection(*errors, outcome_unknown=False):
+    """What the gateway raises (via the SDK) when Kraken answers with an error."""
+    return ExchangeError(
+        "kraken declined the request",
+        detail={"kraken_error": list(errors), "body": {"error": list(errors), "result": {}},
+                "exchange": EXCHANGE, "outcome_unknown": outcome_unknown},
+    )
 
 
 # ---------------------------------------------------------------------------
-# get_trades (TradesHistory) - mocked unit test
+# Every call goes to the Prime account through the gateway
 # ---------------------------------------------------------------------------
 
-# Sample Kraken TradesHistory response (matches /private/TradesHistory format)
-# Kraken uses XXBT=BTC, ZUSD=USD, XETH=ETH; pair format XXBTZUSD
-KRAKEN_TRADES_RESPONSE = {
-    "error": [],
-    "result": {
-        "trades": {
-            "TXNID-SOL-001": {
-                "ordertxid": "ORD-SOL-001",
-                "pair": "SOLUSD",
-                "time": 1730385593.0,
-                "type": "buy",
-                "price": "82.01",
-                "cost": "82.01",
-                "fee": "0.002",
-                "vol": "1.0",
-                "margin": "0",
-                "misc": "",
-            },
-            "TXNID-BTC-001": {
-                "ordertxid": "ORD-BTC-001",
-                "pair": "XXBTZUSD",
-                "time": 1730385600.0,
-                "type": "sell",
-                "price": "95000.50",
-                "cost": "95.0005",
-                "fee": "0.095",
-                "vol": "0.001",
-                "margin": "0",
-                "misc": "",
-            },
-        },
-        "count": 2,
-    },
-}
+
+@pytest.mark.asyncio
+async def test_every_call_targets_kraken_prime(kraken, proxy):
+    proxy.set("place_order", {"error": [], "result": {"txid": ["OABC"]}})
+    await kraken.place_order(PlaceOrderRequest(pair="BTC/USD", side="buy", type="limit", price=1000, size=1))
+    await kraken.get_orders(pair="BTC/USD")
+    await kraken.cancel_order("OABC", "BTC/USD")
+    await kraken.get_all_balances()
+
+    assert [c["exchange"] for c in proxy.calls] == ["kraken_prime"] * 4
+    assert [c["action"] for c in proxy.calls] == [
+        "place_order", "get_pending_orders", "cancel_order", "get_balance"]
 
 
 @pytest.mark.asyncio
-async def test_get_trades_parses_trades_history_correctly():
-    """
-    Unit test: KrakenService.get_trades correctly parses Kraken TradesHistory API response
-    into TradeResponse objects with proper normalization.
+async def test_only_mutating_calls_carry_an_idempotency_key(kraken, proxy):
+    proxy.set("place_order", {"error": [], "result": {"txid": ["OABC"]}})
+    await kraken.place_order(PlaceOrderRequest(pair="BTC/USD", side="buy", type="limit", price=1000, size=1))
+    await kraken.cancel_order("OABC", "BTC/USD")
+    await kraken.get_orders(pair="BTC/USD")
+    await kraken.get_all_balances()
 
-    Success metrics:
-    - No exception raised
-    - Returns list of TradeResponse
-    - Pair normalization: XXBTZUSD -> BTC/USD, SOLUSD -> SOL/USD
-    - Role mapping (Kraken misc/order-type -> maker/taker)
-    - Fee: abs() applied if negative
-    - All required fields present and correctly typed
-    - Limit param respected (at most N items)
-    """
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+    keys = [c["idempotency_key"] for c in proxy.calls]
+    assert keys[0] and keys[1] and keys[0] != keys[1]
+    assert keys[2] == keys[3] == ""
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=KRAKEN_TRADES_RESPONSE):
-        trades = await kraken.get_trades(limit=10)
 
-    assert isinstance(trades, list)
-    assert len(trades) == 2
-
-    # First trade: SOLUSD, buy
-    t0 = trades[0]
-    assert isinstance(t0, TradeResponse)
-    assert t0.id == "TXNID-SOL-001"
-    assert t0.order_id == "ORD-SOL-001"
-    assert t0.pair == "SOL/USD"
-    assert t0.exchange == "kraken"
-    assert t0.side == "buy"
-    assert t0.price == 82.01
-    assert t0.size == 1.0
-    assert t0.fee == 0.002
-    assert t0.fee_currency  # set (quote or base per Kraken)
-    assert t0.role in ("maker", "taker")
-    assert t0.timestamp
-
-    # Second trade: XXBTZUSD, sell
-    t1 = trades[1]
-    assert t1.pair == "BTC/USD"
-    assert t1.side == "sell"
-    assert t1.fee == 0.095
+# ---------------------------------------------------------------------------
+# place_order
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_trades_pair_filter_and_limit():
-    """get_trades with pair filter requests correct pair; limit caps results."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+async def test_place_limit_order_payload_and_result(kraken, proxy):
+    proxy.set("place_order", {"error": [], "result": {
+        "txid": ["OQCLML-BW3P3-BUCMWZ"], "descr": {"order": "buy 1.00000000 XBTUSD @ limit 1000.0"}}})
 
-    captured_path_or_body = None
+    order, err = await kraken.place_order(
+        PlaceOrderRequest(pair="BTC/USD", side="buy", type="limit", price=1000.0, size=1))
 
-    async def capture_request(method, path, body=None, headers=None):
-        nonlocal captured_path_or_body
-        captured_path_or_body = body if body else path
-        return {"error": [], "result": {"trades": dict(list(KRAKEN_TRADES_RESPONSE["result"]["trades"].items())[:1]), "count": 1}}
-
-    with patch.object(kraken, "_request", new_callable=AsyncMock, side_effect=capture_request):
-        await kraken.get_trades(pair="ETH/USD", limit=5)
-
-    assert captured_path_or_body is not None
-    # Implementation will pass pair and count in request (Kraken uses POST with body)
-    assert "ETH" in str(captured_path_or_body) or "eth" in str(captured_path_or_body).lower()
+    assert err is None
+    assert proxy.last["payload"] == {
+        "pair": "XBTUSD", "type": "buy", "ordertype": "limit", "volume": "1.0", "price": "1000.0"}
+    assert order.id == "OQCLML-BW3P3-BUCMWZ"
+    assert order.exchange == "kraken"
+    assert order.pair == "BTC/USD"
+    assert order.status == "live"
 
 
 @pytest.mark.asyncio
-async def test_get_available_cash_parses_balance():
-    """get_available_cash returns quote currency (ZUSD->USD) balance."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
-    balance_response = {
-        "error": [],
-        "result": {
-            "ZUSD": "1234.56",
-            "XXBT": "0.5",
-        },
-    }
+async def test_iceberg_order_sends_displayvol(kraken, proxy):
+    proxy.set("place_order", {"error": [], "result": {"txid": ["OICE"]}})
+    _, err = await kraken.place_order(PlaceOrderRequest(
+        pair="BTC/USD", side="buy", type="iceberg", price=1000.0, size=1.5, visible_size=0.5))
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_available_cash("BTC/USD")
+    assert err is None
+    assert proxy.last["payload"]["displayvol"] == "0.5"
+
+
+@pytest.mark.asyncio
+async def test_iceberg_validation_happens_before_any_call(kraken, proxy):
+    _, err = await kraken.place_order(PlaceOrderRequest(
+        pair="BTC/USD", side="buy", type="iceberg", price=1000.0, size=1.0))
+
+    assert err == "visible_size is required for iceberg orders"
+    assert proxy.calls == []
+
+
+@pytest.mark.asyncio
+async def test_place_order_returns_krakens_error(kraken, proxy):
+    proxy.set("place_order", kraken_rejection("EOrder:Insufficient funds"))
+
+    order, err = await kraken.place_order(PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1))
+
+    assert order is None
+    assert err == "EOrder:Insufficient funds"
+
+
+@pytest.mark.asyncio
+async def test_place_order_outcome_unknown_says_so(kraken, proxy):
+    """A timeout after forwarding: the order may exist. Saying so stops a
+    trader from blindly placing it again."""
+    proxy.set("place_order", kraken_rejection("timeout", outcome_unknown=True))
+
+    order, err = await kraken.place_order(PlaceOrderRequest(pair="BTC/USD", side="buy", type="market", size=1))
+
+    assert order is None
+    assert "outcome unknown" in err.lower()
+
+
+@pytest.mark.asyncio
+async def test_place_order_returns_gateway_refusals(kraken, proxy):
+    proxy.set("place_order", ActionNotPermittedError("kraken_prime registers no route"))
+
+    order, err = await kraken.place_order(PlaceOrderRequest(pair="BTC/USD", side="buy", type="market", size=1))
+
+    assert order is None
+    assert "no route" in err
+
+
+# ---------------------------------------------------------------------------
+# get_orders / cancel_order
+# ---------------------------------------------------------------------------
+
+OPEN_ORDERS = {"error": [], "result": {"open": {
+    "OBTC-1": {"cl_ord_id": "c1", "status": "open", "opentm": 1793819215.22, "vol": "0.00006000",
+               "descr": {"pair": "XBTUSD", "type": "buy", "ordertype": "limit", "price": "40102.2"}},
+    "OSOL-1": {"status": "open", "opentm": 1793819216.0, "vol": "2.0", "display_volume": "0.5",
+               "descr": {"pair": "SOLUSD", "type": "sell", "ordertype": "iceberg", "price": "250.0"}},
+}}}
+
+
+@pytest.mark.asyncio
+async def test_get_orders_parses_and_filters_by_pair(kraken, proxy):
+    proxy.set("get_pending_orders", OPEN_ORDERS)
+
+    orders = await kraken.get_orders(pair="BTC/USD")
+
+    assert proxy.last["payload"] == {}
+    assert [o.id for o in orders] == ["OBTC-1"]
+    o = orders[0]
+    assert (o.pair, o.side, o.type, o.price, o.size, o.status) == (
+        "BTC/USD", "buy", "limit", 40102.2, 0.00006, "open")
+
+
+@pytest.mark.asyncio
+async def test_get_orders_without_pair_returns_everything(kraken, proxy):
+    proxy.set("get_pending_orders", OPEN_ORDERS)
+
+    orders = {o.id: o for o in await kraken.get_orders()}
+
+    assert set(orders) == {"OBTC-1", "OSOL-1"}
+    assert orders["OSOL-1"].type == "iceberg"
+    assert orders["OSOL-1"].visible_size == 0.5
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_sends_the_txid(kraken, proxy):
+    proxy.set("cancel_order", {"error": [], "result": {"count": 1}})
+
+    assert await kraken.cancel_order("OBTC-1", "BTC/USD") is True
+    assert proxy.last["payload"] == {"txid": "OBTC-1"}
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_that_cancelled_nothing_is_a_failure(kraken, proxy):
+    proxy.set("cancel_order", {"error": [], "result": {"count": 0}})
+    assert await kraken.cancel_order("OBTC-1", "BTC/USD") is False
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_rejected_is_a_failure(kraken, proxy):
+    proxy.set("cancel_order", kraken_rejection("EOrder:Unknown order"))
+    assert await kraken.cancel_order("ONOPE", "BTC/USD") is False
+
+
+@pytest.mark.asyncio
+async def test_place_view_cancel_order(kraken, proxy):
+    """The lifecycle the terminal drives: place, see it open, cancel, see it gone."""
+    proxy.set("place_order", {"error": [], "result": {"txid": ["OLIFE-1"]}})
+    placed, err = await kraken.place_order(
+        PlaceOrderRequest(pair="BTC/USD", side="buy", type="limit", price=1000.0, size=0.0001))
+    assert err is None
+
+    proxy.set("get_pending_orders", {"error": [], "result": {"open": {"OLIFE-1": {
+        "status": "open", "vol": "0.0001",
+        "descr": {"pair": "XBTUSD", "type": "buy", "ordertype": "limit", "price": "1000.0"}}}}})
+    assert [o.id for o in await kraken.get_orders(pair="BTC/USD")] == [placed.id]
+
+    proxy.set("cancel_order", {"error": [], "result": {"count": 1}})
+    assert await kraken.cancel_order(placed.id, "BTC/USD") is True
+
+    proxy.set("get_pending_orders", {"error": [], "result": {"open": {}}})
+    assert await kraken.get_orders(pair="BTC/USD") == []
+
+
+# ---------------------------------------------------------------------------
+# Balances (Kraken BalanceEx shape)
+# ---------------------------------------------------------------------------
+
+BALANCE_EX = {"error": [], "result": {
+    "ZUSD": {"balance": "1234.5600", "hold_trade": "34.5600"},
+    "XXBT": {"balance": "0.5000000000", "hold_trade": "0.0000000000"},
+    "XETH": {"balance": "0.0000000000", "hold_trade": "0.0000000000"},
+    "SOL": {"balance": "3.0", "hold_trade": "1.0"},
+}}
+
+
+@pytest.mark.asyncio
+async def test_get_available_cash_subtracts_held_funds(kraken, proxy):
+    proxy.set("get_balance", BALANCE_EX)
+
+    result = await kraken.get_available_cash("BTC/USD")
 
     assert result.exchange == "kraken"
     assert result.currency == "USD"
-    assert result.available == 1234.56
-    assert result.frozen >= 0
-    assert result.total == 1234.56
+    assert result.total == pytest.approx(1234.56)
+    assert result.frozen == pytest.approx(34.56)
+    assert result.available == pytest.approx(1200.0)
 
 
 @pytest.mark.asyncio
-async def test_get_all_balances_returns_all_currencies():
-    """get_all_balances returns all currencies from full balance response."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
-    balance_response = {
-        "error": [],
-        "result": {
-            "ZUSD": "1000",
-            "XXBT": "0.5",
-        },
-    }
+async def test_get_available_positions_finds_legacy_asset_codes(kraken, proxy):
+    """XXBT has to be found for BTC (the lookup used to try only XBT)."""
+    proxy.set("get_balance", BALANCE_EX)
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_all_balances()
+    result = await kraken.get_available_positions("BTC/USD")
 
-    assert result.exchange == "kraken"
-    assert len(result.currencies) == 2
-    usd = next(c for c in result.currencies if c.currency == "USD")
-    assert usd.available == 1000
-    btc = next(c for c in result.currencies if c.currency == "BTC")
-    assert btc.available == 0.5
-
-
-@pytest.mark.asyncio
-async def test_get_all_positions_excludes_cash_and_zero():
-    """get_all_positions returns only non-zero, non-stablecoin holdings."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
-    balance_response = {
-        "error": [],
-        "result": {
-            "ZUSD": "1000",
-            "XXBT": "0.5",
-            "XETH": "0",
-        },
-    }
-
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_all_positions()
-
-    assert result.exchange == "kraken"
-    assert len(result.positions) == 1
-    assert result.positions[0].currency == "BTC"
-    assert result.positions[0].available == 0.5
-
-
-@pytest.mark.asyncio
-async def test_get_available_positions_parses_balance():
-    """get_available_positions returns base currency balance."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
-    balance_response = {
-        "error": [],
-        "result": {
-            "XXBT": "0.5",
-            "ZUSD": "1000",
-        },
-    }
-
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=balance_response):
-        result = await kraken.get_available_positions("BTC/USD")
-
-    assert result.exchange == "kraken"
-    assert result.pair == "BTC/USD"
     assert result.base_currency == "BTC"
     assert result.available == 0.5
-    assert result.total >= 0.5
+    assert result.total == 0.5
 
 
 @pytest.mark.asyncio
-async def test_get_trades_empty_response():
-    """get_trades handles empty trades dict without error."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
+async def test_get_all_balances_normalizes_every_currency(kraken, proxy):
+    proxy.set("get_balance", BALANCE_EX)
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value={"error": [], "result": {"trades": {}, "count": 0}}):
-        trades = await kraken.get_trades()
+    result = await kraken.get_all_balances()
 
-    assert trades == []
+    by_ccy = {c.currency: c for c in result.currencies}
+    assert set(by_ccy) == {"USD", "BTC", "ETH", "SOL"}
+    assert by_ccy["SOL"].available == 2.0
+    assert by_ccy["SOL"].frozen == 1.0
+
+
+@pytest.mark.asyncio
+async def test_get_all_positions_excludes_cash_and_zero(kraken, proxy):
+    proxy.set("get_balance", BALANCE_EX)
+
+    result = await kraken.get_all_positions()
+
+    assert {p.currency for p in result.positions} == {"BTC", "SOL"}
+
+
+@pytest.mark.asyncio
+async def test_a_currency_under_two_codes_is_added_together(kraken, proxy):
+    proxy.set("get_balance", {"error": [], "result": {
+        "XXBT": {"balance": "0.5", "hold_trade": "0"}, "XBT": {"balance": "0.25", "hold_trade": "0"}}})
+
+    result = await kraken.get_available_positions("BTC/USD")
+
+    assert result.total == 0.75
+
+
+@pytest.mark.asyncio
+async def test_missing_currency_is_zero(kraken, proxy):
+    proxy.set("get_balance", BALANCE_EX)
+    result = await kraken.get_available_cash("BTC/EUR")
+    assert (result.available, result.frozen, result.total) == (0.0, 0.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
-# place_order error handling
+# Trades: not routed for Prime yet
+# ---------------------------------------------------------------------------
+
+KRAKEN_TRADES_RESPONSE = {"error": [], "result": {"count": 2, "trades": {
+    "TXNID-SOL-001": {"ordertxid": "ORD-SOL-001", "pair": "SOLUSD", "time": 1730385593.0, "type": "buy",
+                      "price": "82.01", "cost": "82.01", "fee": "0.002", "vol": "1.0", "misc": ""},
+    "TXNID-BTC-001": {"ordertxid": "ORD-BTC-001", "pair": "XXBTZUSD", "time": 1730385600.0, "type": "sell",
+                      "price": "95000.50", "cost": "95.0005", "fee": "0.095", "vol": "0.001", "misc": ""},
+}}}
+
+
+@pytest.mark.asyncio
+async def test_get_trades_is_empty_while_the_gateway_does_not_route_fills(kraken, proxy):
+    proxy.set("get_fills", ActionNotPermittedError("kraken_prime registers no route for action 'get_fills'"))
+    assert await kraken.get_trades() == []
+
+
+@pytest.mark.asyncio
+async def test_get_trades_parses_fills_once_they_are_routed(kraken, proxy):
+    proxy.set("get_fills", KRAKEN_TRADES_RESPONSE)
+
+    trades = await kraken.get_trades(pair="BTC/USD", limit=5)
+
+    assert proxy.last["payload"] == {"pair": "XBTUSD"}
+    by_id = {t.id: t for t in trades}
+    assert isinstance(by_id["TXNID-BTC-001"], TradeResponse)
+    assert by_id["TXNID-BTC-001"].pair == "BTC/USD"
+    assert by_id["TXNID-BTC-001"].side == "sell"
+    assert by_id["TXNID-SOL-001"].fee == 0.002
+
+
+# ---------------------------------------------------------------------------
+# Order stream: none for Prime
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_place_order_returns_error_on_kraken_failure():
-    """place_order returns (None, error_msg) when Kraken rejects the order."""
-    kraken = KrakenService(base_url="https://api.kraken.com", simulated=True)
-    kraken_response = {
-        "error": ["EInsufficient:Insufficient funds"],
-        "result": {},
-    }
+async def test_order_stream_is_a_no_op(kraken, proxy):
+    import asyncio
 
-    with patch.object(kraken, "_request", new_callable=AsyncMock, return_value=kraken_response):
-        order, err = await kraken.place_order(
-            PlaceOrderRequest(pair="SOL/USD", side="sell", type="market", size=1),
-        )
+    queue: asyncio.Queue = asyncio.Queue()
+    await kraken.start_order_stream(queue)
+    await kraken.stop_order_stream()
 
-    assert order is None
-    assert err is not None
-    assert "Insufficient" in err or "funds" in err.lower()
-
-
-# ---------------------------------------------------------------------------
-# Order lifecycle (integration - requires API keys)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_place_view_cancel_order(kraken: KrakenService):
-    """
-    Full order lifecycle: place a limit order far from market price,
-    verify it appears in pending orders, cancel it, then verify it's gone.
-    """
-    order = PlaceOrderRequest(
-        pair="BTC/USD",
-        side="buy",
-        type="limit",
-        price=1000.00,
-        size=1,
-    )
-    placed, err = await kraken.place_order(order)
-    assert err is None, f"place_order failed: {err}"
-    assert placed is not None
-    order_id = placed.id
-
-    pending = await kraken.get_orders(pair="BTC/USD")
-    found = [o for o in pending if o.id == order_id]
-    assert len(found) == 1, f"Order {order_id} not found in pending: {pending}"
-
-    cancelled = await kraken.cancel_order(order_id, "BTC/USD")
-    assert cancelled is True, f"cancel_order returned False for order {order_id}"
-
-    pending_after = await kraken.get_orders(pair="BTC/USD")
-    still_there = [o for o in pending_after if o.id == order_id]
-    assert len(still_there) == 0, f"Order {order_id} still pending after cancel"
+    assert queue.empty()
+    assert proxy.calls == []

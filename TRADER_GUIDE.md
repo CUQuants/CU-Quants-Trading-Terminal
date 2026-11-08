@@ -63,8 +63,15 @@ and point `CUQ_PROXY_URL` at it.
 
 ### Kraken
 
-Still called directly with `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` until its own
-migration onto the Proxy.
+Goes through the Proxy too, to the club's **Kraken Prime** account (gateway
+exchange `kraken_prime`). The terminal holds no Kraken keys; the same
+`CUQ_PROXY_*` credential covers it.
+
+What works for now: placing and cancelling orders, open orders, and balances.
+Not yet: fill history (the Trades view is empty for Kraken) and live order
+updates. Open orders and balances refresh after each order you place or cancel
+in the terminal; anything that changes outside it (a fill, an order cancelled
+elsewhere) shows up on the next refresh.
 
 **Example `.env`:**
 
@@ -74,9 +81,6 @@ CUQ_PROXY_API_KEY=cuq_op_...
 CUQ_PROXY_SECRET=...
 CUQ_PROXY_OPERATOR_ID=cuq-014
 CUQ_PROXY_OPERATOR_NAME=J. Rivera
-
-KRAKEN_API_KEY=...
-KRAKEN_API_SECRET=...
 ```
 
 **Security:** Never commit `.env` or share your keys. `.env` is in `.gitignore`.

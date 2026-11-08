@@ -1,19 +1,12 @@
 import asyncio
-import hashlib
-import hmac
-import base64
 import logging
-import os
-import threading
-import time
-import urllib.parse
 from typing import Dict, List, Optional, Tuple
 
-from dotenv import load_dotenv
-load_dotenv()
+from proxy_client import new_idempotency_key
+from proxy_client.errors import ActionNotPermittedError, ExchangeError, ProxyError
 
 from exchange_services.exchange import ExchangeService
-from exchange_services.kraken_order_stream import KrakenOrderStream
+from exchange_services.proxy_session import ProxySession
 from models import (
     PlaceOrderRequest,
     OrderResponse,
@@ -71,66 +64,54 @@ _KNOWN_PAIR_PREFIXES: Dict[str, Tuple[str, str]] = {
 }
 
 
-class KrakenService(ExchangeService):
-    """Kraken spot exchange service.
+#: The gateway's exchange name for the club's Kraken Prime account.
+EXCHANGE = "kraken_prime"
 
-    Handles REST authentication (HMAC-SHA512 + nonce), pair normalization
-    between standard (BTC/USD) and Kraken-native formats, and order/balance
-    operations.  Wires up a KrakenOrderStream for live order events.
+
+def _gateway_error_message(e: ProxyError) -> str:
+    """A human error string from a gateway failure.
+
+    For a Kraken rejection the gateway relays Kraken's own `error` array
+    under `detail["kraken_error"]` (and the whole body under `detail["body"]`).
+    """
+    detail = e.detail if isinstance(e.detail, dict) else {}
+    errors = detail.get("kraken_error") or (detail.get("body") or {}).get("error") or []
+    if errors:
+        return "; ".join(str(x) for x in errors)
+    return e.message or str(e)
+
+
+class KrakenService(ExchangeService):
+    """Kraken service, routed through the CU Quants Proxy to the Prime account.
+
+    The terminal holds no Kraken credentials. Every call is
+    `self._proxy.call("kraken_prime", <action>, <payload>)`. The gateway signs
+    with the club's vaulted Prime key, adds the Prime `account_id`, enforces
+    the allowlist and logs the request. Payloads are Kraken's own field names
+    (`pair`, `type`, `ordertype`, `volume`, ...), and responses come back as
+    Kraken's own body (`{"error": [], "result": {...}}`), so the parsing below
+    is the same as when this service signed its own requests.
+
+    The gateway routes four actions for Prime: `place_order`, `cancel_order`,
+    `get_pending_orders` and `get_balance` (Kraken `BalanceEx`). Fills
+    (`get_fills`) are not routed yet, so `get_trades` returns an empty list
+    until they are.
+
+    There is no live order stream: Kraken's `executions` channel sends no
+    updates for Prime orders. The frontend refetches open orders and balances
+    after every place and cancel, so the terminal's own actions still show up.
     """
 
-    def __init__(self, base_url: str = "https://api.kraken.com", simulated: bool = False):
-        super().__init__(base_url)
-        self.api_key = os.getenv("KRAKEN_API_KEY", "")
-        self.api_secret = os.getenv("KRAKEN_API_SECRET", "")
-        self.simulated = simulated
-        self._order_stream: KrakenOrderStream | None = None
+    def __init__(self, proxy: ProxySession):
+        super().__init__()
+        self._proxy = proxy
 
-    def _feed_order_symbols(self, mappings: dict[str, str]) -> None:
-        """Push order_id -> symbol mappings into the WS stream's cache."""
-        if self._order_stream:
-            self._order_stream.update_symbol_cache(mappings)
-
-    # ------------------------------------------------------------------
-    # Auth / signing (REST)
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _get_nonce() -> str:
-        return str(int(time.time() * 1000))
-
-    def _sign(self, urlpath: str, data: dict) -> str:
-        """HMAC-SHA512 signature per Kraken docs:
-        sign = HMAC-SHA512(urlpath + SHA256(nonce + POST_data), base64decode(secret))
-        """
-        post_data = urllib.parse.urlencode(data)
-        encoded = (str(data["nonce"]) + post_data).encode()
-        message = urlpath.encode() + hashlib.sha256(encoded).digest()
-        mac = hmac.new(base64.b64decode(self.api_secret), message, hashlib.sha512)
-        return base64.b64encode(mac.digest()).decode()
-
-    async def _private_request(self, path: str, extra_data: Optional[dict] = None) -> dict:
-        """Authenticated POST to a Kraken private endpoint.
-
-        Adds nonce, signs, and sends form-encoded body through the inherited
-        ``_request`` helper.
-        """
-        data: dict = {"nonce": self._get_nonce()}
-        if extra_data:
-            data.update(extra_data)
-
-        urlpath = f"/0{path}"
-        body = urllib.parse.urlencode(data)
-        headers = {
-            "API-Key": self.api_key,
-            "API-Sign": self._sign(urlpath, data),
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        resp = await self._request("POST", urlpath, body=body, headers=headers)
-        errors = resp.get("error", [])
-        if errors:
-            raise Exception("; ".join(errors))
-        return resp
+    async def _call(self, action: str, payload: Optional[dict] = None, *, mutating: bool = False) -> dict:
+        """One gateway call. Mutating calls get a fresh idempotency key."""
+        return await self._proxy.call(
+            EXCHANGE, action, payload or {},
+            idempotency_key=new_idempotency_key() if mutating else "",
+        )
 
     # ------------------------------------------------------------------
     # Pair / asset normalization
@@ -197,17 +178,6 @@ class KrakenService(ExchangeService):
         """BTC/USD -> BTC."""
         return pair.split("/")[0]
 
-    def _find_balance_for(self, balances: Dict[str, str], standard_ccy: str) -> float:
-        """Look up a balance by standard currency name, checking all Kraken aliases."""
-        # Direct match (e.g. SOL, DOT)
-        if standard_ccy in balances:
-            return float(balances[standard_ccy])
-        # Reverse-lookup the Kraken key
-        kraken_key = _STANDARD_TO_KRAKEN_ASSET.get(standard_ccy)
-        if kraken_key and kraken_key in balances:
-            return float(balances[kraken_key])
-        return 0.0
-
     # ------------------------------------------------------------------
     # REST: orders
     # ------------------------------------------------------------------
@@ -234,9 +204,15 @@ class KrakenService(ExchangeService):
             data["displayvol"] = str(request.visible_size)
 
         try:
-            resp = await self._private_request("/private/AddOrder", data)
-        except Exception as e:
-            return (None, str(e))
+            resp = await self._call("place_order", data, mutating=True)
+        except ExchangeError as e:
+            if e.outcome_unknown:
+                logger.error("Kraken place_order outcome unknown (request %s): %s", e.request_id, e)
+                return (None, "Order outcome unknown, check open orders before retrying: "
+                              + _gateway_error_message(e))
+            return (None, _gateway_error_message(e))
+        except ProxyError as e:
+            return (None, _gateway_error_message(e))
 
         result = resp.get("result", {})
         txids = result.get("txid", [])
@@ -253,11 +229,10 @@ class KrakenService(ExchangeService):
             size=request.size,
             status="live",
         )
-        self._feed_order_symbols({order_id: request.pair})
         return (order, None)
 
     async def get_orders(self, pair: Optional[str] = None) -> List[OrderResponse]:
-        resp = await self._private_request("/private/OpenOrders")
+        resp = await self._call("get_pending_orders")
         raw_orders = resp.get("result", {}).get("open", {})
 
         orders: List[OrderResponse] = []
@@ -292,7 +267,6 @@ class KrakenService(ExchangeService):
                 created_at=str(item.get("opentm", "")),
             ))
 
-        self._feed_order_symbols({o.id: o.pair for o in orders})
         return orders
 
     async def get_trades(
@@ -302,7 +276,12 @@ class KrakenService(ExchangeService):
         if pair:
             extra["pair"] = self._to_native_pair(pair)
 
-        resp = await self._private_request("/private/TradesHistory", extra)
+        try:
+            resp = await self._call("get_fills", extra)
+        except ActionNotPermittedError:
+            # Not routed for Prime yet. Starts working once the gateway routes it.
+            logger.info("Kraken fills are not routed through the gateway yet; returning none")
+            return []
         raw_trades = resp.get("result", {}).get("trades", {})
 
         trades: List[TradeResponse] = []
@@ -328,41 +307,64 @@ class KrakenService(ExchangeService):
 
     async def cancel_order(self, order_id: str, pair: str) -> bool:
         try:
-            await self._private_request("/private/CancelOrder", {"txid": order_id})
-            return True
-        except Exception:
+            resp = await self._call("cancel_order", {"txid": order_id}, mutating=True)
+        except ProxyError as e:
+            logger.warning("Kraken cancel_order %s failed: %s", order_id, _gateway_error_message(e))
             return False
+        return (resp.get("result") or {}).get("count", 0) >= 1
 
     # ------------------------------------------------------------------
     # REST: account balance
     # ------------------------------------------------------------------
 
-    async def _fetch_all_balances(self) -> Dict[str, str]:
-        resp = await self._private_request("/private/Balance")
-        return resp.get("result", {})
+    async def _fetch_all_balances(self) -> Dict[str, Tuple[float, float]]:
+        """Standard currency -> (total, frozen), from Kraken `BalanceEx`.
+
+        `BalanceEx` rows are `{"balance": "...", "hold_trade": "..."}`: the
+        total and the part held by open orders. Asset codes are normalized
+        here (XXBT -> BTC, ZUSD -> USD) so every lookup below is by the
+        standard name, and two codes for the same currency are added together.
+        """
+        resp = await self._call("get_balance")
+        out: Dict[str, Tuple[float, float]] = {}
+        for raw_ccy, row in (resp.get("result") or {}).items():
+            if isinstance(row, dict):
+                total = float(row.get("balance") or 0)
+                frozen = float(row.get("hold_trade") or 0)
+            else:  # plain `Balance` shape: {"ZUSD": "1000.0"}
+                total, frozen = float(row or 0), 0.0
+            ccy = self._normalize_currency(raw_ccy)
+            prev_total, prev_frozen = out.get(ccy, (0.0, 0.0))
+            out[ccy] = (prev_total + total, prev_frozen + frozen)
+        return out
+
+    @staticmethod
+    def _split(total: float, frozen: float) -> Tuple[float, float, float]:
+        """(available, frozen, total)."""
+        return max(total - frozen, 0.0), frozen, total
 
     async def get_available_cash(self, pair: str) -> AvailableCashResponse:
         balances = await self._fetch_all_balances()
         ccy = self._get_quote_ccy(pair)
-        total = self._find_balance_for(balances, ccy)
+        available, frozen, total = self._split(*balances.get(ccy, (0.0, 0.0)))
         return AvailableCashResponse(
             exchange="kraken",
             currency=ccy,
-            available=total,
-            frozen=0.0,
+            available=available,
+            frozen=frozen,
             total=total,
         )
 
     async def get_available_positions(self, pair: str) -> AvailablePositionResponse:
         balances = await self._fetch_all_balances()
         ccy = self._get_base_ccy(pair)
-        total = self._find_balance_for(balances, ccy)
+        available, frozen, total = self._split(*balances.get(ccy, (0.0, 0.0)))
         return AvailablePositionResponse(
             exchange="kraken",
             pair=pair,
             base_currency=ccy,
-            available=total,
-            frozen=0.0,
+            available=available,
+            frozen=frozen,
             total=total,
         )
 
@@ -371,13 +373,12 @@ class KrakenService(ExchangeService):
     async def get_all_balances(self) -> AllBalancesResponse:
         balances = await self._fetch_all_balances()
         currencies: List[BalanceEntry] = []
-        for raw_ccy, raw_val in balances.items():
-            ccy = self._normalize_currency(raw_ccy)
-            total = float(raw_val)
+        for ccy, (total, frozen) in balances.items():
+            available, frozen, total = self._split(total, frozen)
             currencies.append(BalanceEntry(
                 currency=ccy,
-                available=total,
-                frozen=0.0,
+                available=available,
+                frozen=frozen,
                 total=total,
             ))
         return AllBalancesResponse(exchange="kraken", currencies=currencies)
@@ -385,36 +386,26 @@ class KrakenService(ExchangeService):
     async def get_all_positions(self) -> AllPositionsResponse:
         balances = await self._fetch_all_balances()
         positions: List[PositionEntry] = []
-        for raw_ccy, raw_val in balances.items():
-            ccy = self._normalize_currency(raw_ccy)
-            if ccy in self._CASH_CCYS:
+        for ccy, (total, frozen) in balances.items():
+            if ccy in self._CASH_CCYS or total <= 0:
                 continue
-            total = float(raw_val)
-            if total <= 0:
-                continue
+            available, frozen, total = self._split(total, frozen)
             positions.append(PositionEntry(
                 currency=ccy,
-                available=total,
-                frozen=0.0,
+                available=available,
+                frozen=frozen,
                 total=total,
             ))
         return AllPositionsResponse(exchange="kraken", positions=positions)
 
     # ------------------------------------------------------------------
-    # WS: order event stream
+    # Order event stream: none for Prime
     # ------------------------------------------------------------------
 
     async def start_order_stream(self, event_queue: asyncio.Queue) -> None:
-        if self._order_stream is not None:
-            return
-        self._order_stream = KrakenOrderStream(
-            api_key=self.api_key,
-            api_secret=self.api_secret,
-            base_url=self.base_url,
-        )
-        await self._order_stream.start(event_queue)
+        """No-op. Kraken's `executions` channel sends no updates for Prime
+        orders, and the gateway offers no WebSocket for `kraken_prime`."""
+        return None
 
     async def stop_order_stream(self) -> None:
-        if self._order_stream:
-            await self._order_stream.stop()
-            self._order_stream = None
+        return None
