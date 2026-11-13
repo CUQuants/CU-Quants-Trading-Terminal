@@ -14,7 +14,8 @@ dashboard :5173  ──HTTP/WS──▶  backend :8000  ──proxy_client──
 - The **`trading-gateway`** repo checked out next to this one (`../trading-gateway`).
 - **Docker running** — the *gateway* needs it for its throwaway Postgres. The
   terminal itself does not.
-- **`uv`** and **Node.js 20+ / npm**.
+- The **`proxy-client`** repo checked out next to this one (`../proxy-client`).
+- **`uv`** and **Node.js 22.12+ (or 20.19+) / npm** — see the README's install step.
 - An **OKX demo** key/secret/passphrase in `../trading-gateway/.env.sandbox`
   (see that repo's `SANDBOX_INTEGRATION.md`).
 
