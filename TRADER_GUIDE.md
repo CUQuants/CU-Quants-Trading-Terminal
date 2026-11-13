@@ -1,19 +1,9 @@
-# Trader Guide: Running the QuantX Trading Terminal
+# Trader Guide: Running the CU Quants Trading Terminal
 
-This guide explains how to run the trading terminal, configure OKX credentials, and use Docker.
-
----
-
-## Quick Start (Docker)
-
-From the repo root:
-
-```bash
-docker compose up --build
-```
-
-- **Backend API**: http://localhost:8000  
-- **Frontend dashboard**: http://localhost:3000  
+This guide covers configuration in detail: environment variables, exchanges,
+and troubleshooting. **To install and run the terminal, follow
+[Getting started in the README](./README.md#getting-started-traders)** (one
+command: `scripts/dev-local.sh`, dashboard at http://localhost:5173).
 
 ---
 
@@ -88,6 +78,11 @@ CUQ_PROXY_OPERATOR_NAME=J. Rivera
 ---
 
 ## Docker Basics
+
+> **Currently not supported:** the backend image build fails because
+> `proxy-client` is installed from a sibling folder outside the build context.
+> Use `scripts/dev-local.sh` instead. This section applies again once
+> `proxy-client` is pinned to a git revision.
 
 ### Installing Docker
 

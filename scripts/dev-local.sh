@@ -24,35 +24,64 @@ log()  { printf '\033[1;34m[dev-local]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[dev-local] warning:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[dev-local] error:\033[0m %s\n' "$*" >&2; exit 1; }
 
-command -v uv  >/dev/null || die "uv not found — https://docs.astral.sh/uv/"
-command -v npm >/dev/null || die "npm not found — install Node.js"
-[ -f "$BACKEND/.env" ] || die "$BACKEND/.env missing — cp backend/.env.example backend/.env and fill in CUQ_PROXY_* (see DEV_TESTING.md)"
+# --- preflight: tools ---------------------------------------------------------
+command -v uv  >/dev/null || die "uv not found — install it with:
+    curl -LsSf https://astral.sh/uv/install.sh | sh     (or: brew install uv)
+  then open a new terminal and re-run this script."
+command -v node >/dev/null && command -v npm >/dev/null || die "Node.js not found — install Node 22 LTS:
+    brew install node@22     (or https://nodejs.org, or: nvm install)
+  then open a new terminal and re-run this script."
+node -e '
+  const [M, m] = process.versions.node.split(".").map(Number);
+  process.exit((M === 20 && m >= 19) || (M === 22 && m >= 12) || M > 22 ? 0 : 1);
+' || die "Node $(node -v) is too old — Vite needs 20.19+ or 22.12+. Install Node 22 LTS
+    (brew install node@22, or: nvm install && nvm use — frontend/.nvmrc pins it)."
 
-# --- preflight: required env + is the gateway up? -----------------------
+# The backend depends on the proxy-client SDK as a sibling checkout
+# (backend/pyproject.toml -> ../../proxy-client).
+PROXY_CLIENT="$(cd "$ROOT/.." && pwd)/proxy-client"
+[ -d "$PROXY_CLIENT" ] || die "proxy-client SDK not found at $PROXY_CLIENT — clone it next to this repo:
+    git clone https://github.com/CUQuants/proxy-client.git \"$PROXY_CLIENT\""
+
+# --- preflight: backend/.env --------------------------------------------------
+if [ ! -f "$BACKEND/.env" ]; then
+  cp "$BACKEND/.env.example" "$BACKEND/.env"
+  die "created backend/.env from the template — open it and fill in the five
+  CUQ_PROXY_* values from your operator credential, then re-run this script."
+fi
+
 missing=""
 for v in CUQ_PROXY_URL CUQ_PROXY_API_KEY CUQ_PROXY_SECRET CUQ_PROXY_OPERATOR_ID CUQ_PROXY_OPERATOR_NAME; do
-  grep -qE "^${v}=.+" "$BACKEND/.env" || missing="$missing $v"
+  val="$(grep -E "^${v}=" "$BACKEND/.env" | head -1 | cut -d= -f2-)"
+  tmpl="$(grep -E "^${v}=" "$BACKEND/.env.example" | head -1 | cut -d= -f2-)"
+  # blank, or still the placeholder from .env.example
+  if [ -z "$val" ] || [ "$val" = "$tmpl" ]; then missing="$missing $v"; fi
 done
-[ -z "$missing" ] || die "backend/.env is missing or blank:$missing
-  (these are the terminal's names — map them from the gateway's creds file:
-   CUQ_OPERATOR_API_KEY->CUQ_PROXY_API_KEY, _API_SECRET->CUQ_PROXY_SECRET,
-   _ID->CUQ_PROXY_OPERATOR_ID, _NAME->CUQ_PROXY_OPERATOR_NAME, base URL->CUQ_PROXY_URL)"
+[ -z "$missing" ] || die "backend/.env still has blank or placeholder values for:$missing
+  Fill them in from your operator credential (see README → \"Get your credentials\")."
 
 GW="$(grep -E '^CUQ_PROXY_URL=' "$BACKEND/.env" | head -1 | cut -d= -f2- | tr -d '"'"'"' \r')"
 if curl -fsS -m 3 "$GW/healthz" >/dev/null 2>&1; then
   log "gateway reachable at $GW"
 else
-  warn "gateway at $GW did not answer /healthz — start it first:"
-  warn "    (cd ../trading-gateway && scripts/dev-gateway.sh up)"
+  warn "gateway at $GW did not answer /healthz."
+  case "$GW" in
+    *localhost*|*127.0.0.1*)
+      warn "  it's a local gateway — start it first: (cd ../trading-gateway && scripts/dev-gateway.sh up)" ;;
+    *)
+      warn "  check CUQ_PROXY_URL in backend/.env, your network/VPN, or ask whoever issued your credential." ;;
+  esac
 fi
 
 # --- dependencies ------------------------------------------------------------
 if [ "${SKIP_INSTALL:-0}" != "1" ]; then
-  log "backend deps (uv sync)"
+  log "backend deps (uv sync — downloads Python 3.12 on first run if needed)"
   (cd "$BACKEND" && uv sync --quiet)
-  if [ ! -d "$FRONTEND/node_modules" ]; then
+  # Reinstall when package-lock.json changed since the last install (e.g. after git pull).
+  if [ ! -f "$FRONTEND/node_modules/.package-lock.json" ] \
+     || [ "$FRONTEND/package-lock.json" -nt "$FRONTEND/node_modules/.package-lock.json" ]; then
     log "frontend deps (npm install)"
-    (cd "$FRONTEND" && npm install --silent)
+    (cd "$FRONTEND" && npm install --silent --no-fund --no-audit)
   fi
 fi
 
