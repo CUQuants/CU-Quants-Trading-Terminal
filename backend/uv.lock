@@ -118,8 +118,8 @@ requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
-    { name = "websockets", marker = "extra == 'dev'", specifier = ">=14" },
-    { name = "websockets", marker = "extra == 'websocket'", specifier = ">=14" },
+    { name = "websockets", marker = "extra == 'dev'", specifier = ">=13" },
+    { name = "websockets", marker = "extra == 'websocket'", specifier = ">=13" },
 ]
 provides-extras = ["websocket", "dev"]
 

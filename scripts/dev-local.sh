@@ -59,9 +59,19 @@ fi
 # --- run both; kill the whole process group on exit --------------------------
 # HUP matters: closing the terminal window sends SIGHUP, not INT. Without it
 # the script dies untrapped and `uv run uvicorn` (which ignores HUP) is
-# orphaned, still holding the backend port. `trap -` stops the trap re-firing
-# when `kill 0` signals this script too.
-trap 'trap - EXIT INT TERM HUP; kill 0' EXIT INT TERM HUP
+# orphaned, still holding the backend port. `kill 0` signals this script too,
+# so ignore TERM here and `wait` for the children: otherwise the script dies
+# first, the shell prints its prompt, and uvicorn's shutdown logs land after
+# it, which makes it look hung.
+cleanup() {
+  trap - EXIT INT HUP
+  trap '' TERM
+  kill 0 2>/dev/null || true
+  wait 2>/dev/null || true
+  log "stopped"
+  exit 0
+}
+trap cleanup EXIT INT TERM HUP
 
 log "backend  -> http://127.0.0.1:$BACKEND_PORT   (routes OKX through $GW)"
 ( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) &
