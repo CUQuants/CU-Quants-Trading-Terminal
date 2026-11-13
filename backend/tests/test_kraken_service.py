@@ -348,6 +348,9 @@ async def test_get_trades_parses_fills_once_they_are_routed(kraken, proxy):
     assert by_id["TXNID-BTC-001"].pair == "BTC/USD"
     assert by_id["TXNID-BTC-001"].side == "sell"
     assert by_id["TXNID-SOL-001"].fee == 0.002
+    # Kraken sends epoch seconds; the terminal expects milliseconds like OKX.
+    assert by_id["TXNID-BTC-001"].timestamp == "1730385600000"
+    assert by_id["TXNID-SOL-001"].timestamp == "1730385593000"
 
 
 # ---------------------------------------------------------------------------

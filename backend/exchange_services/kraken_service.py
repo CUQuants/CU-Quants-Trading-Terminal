@@ -81,6 +81,17 @@ def _gateway_error_message(e: ProxyError) -> str:
     return e.message or str(e)
 
 
+
+def _kraken_time_to_ms(value) -> str:
+    """Kraken REST gives fill times as epoch seconds (float). The terminal
+    uses millisecond-epoch strings, the same as OKX's fillTime."""
+    if value in (None, ""):
+        return ""
+    try:
+        return str(int(float(value) * 1000))
+    except (TypeError, ValueError):
+        return str(value)
+
 class KrakenService(ExchangeService):
     """Kraken service, routed through the CU Quants Proxy to the Prime account.
 
@@ -301,7 +312,7 @@ class KrakenService(ExchangeService):
                 fee=abs(float(fee_str)),
                 fee_currency=self._get_quote_ccy(self._from_native_pair(native_pair)),
                 role="maker" if item.get("misc") == "maker" else "taker",
-                timestamp=str(item.get("time", "")),
+                timestamp=_kraken_time_to_ms(item.get("time")),
             ))
         return trades
 
