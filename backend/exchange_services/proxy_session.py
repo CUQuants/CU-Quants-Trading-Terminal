@@ -29,11 +29,17 @@ point `CUQ_PROXY_URL` at a gateway running in that mode.
 
 from __future__ import annotations
 
+import json
 import os
+import time
+import uuid
 from typing import Any
 
+import httpx
+
 from proxy_client import ProxyClient
-from proxy_client.errors import ProxyError
+from proxy_client.errors import ProxyError, ProxyUnreachableError, from_response
+from proxy_client.signing import compute_signature
 
 __all__ = ["ProxySession", "ProxyConfigError", "ProxyError"]
 
@@ -60,6 +66,11 @@ class ProxySession:
     #: timeout is shorter, so this only fires if the Proxy itself is wedged.
     DEFAULT_TIMEOUT = 15.0
 
+    #: The gateway's PnL route (trading-gateway `proxy/pnl.py`). Not an
+    #: exchange action, so it isn't `POST /v1/{exchange}` and the SDK's
+    #: `acall` can't reach it.
+    PNL_PATH = "/v1/rmu/pnl"
+
     def __init__(
         self,
         base_url: str,
@@ -82,6 +93,9 @@ class ProxySession:
         self._client = ProxyClient.for_operator(
             base_url, api_key, secret, operator_id, operator_name, timeout=timeout
         )
+        # For the PnL route only. Its success body is the RMU's report at the
+        # top level, not the Proxy's usual `{"data": ...}` envelope.
+        self._http = httpx.AsyncClient(timeout=timeout)
 
     def __repr__(self) -> str:  # never let the secret reach a traceback or log
         return f"<ProxySession {self.operator_id} via {self._base}>"
@@ -150,11 +164,65 @@ class ProxySession:
             exchange, action, payload or {}, idempotency_key=idempotency_key
         )
 
+    async def get_pnl(self, group_by: str = "pair") -> dict[str, Any]:
+        """The club's PnL report: `POST /v1/rmu/pnl` on the gateway, which
+        passes RMU Core's `GET /v1/pnl` through unchanged.
+
+        Signed exactly like every other request (the SDK's own
+        `compute_signature`, over this path). Returns the RMU's JSON as-is:
+        nothing here recomputes a number. Raises a `ProxyError` (code
+        `PNL_UNAVAILABLE` when the gateway can't reach the RMU or the route
+        isn't configured there).
+
+        TODO: move into proxy-client as `get_pnl()` (trading-gateway ROADMAP)
+        and call that instead.
+        """
+        body = json.dumps({
+            "operator_id": self.operator_id,
+            "operator_name": self.operator_name,
+            "payload": {"group_by": group_by},
+        }).encode()
+        timestamp = str(int(time.time()))
+        nonce = uuid.uuid4().hex
+        headers = {
+            "X-Api-Key": self._api_key,
+            "X-Timestamp": timestamp,
+            "X-Nonce": nonce,
+            "X-Signature": compute_signature(
+                self._secret.encode("utf-8"), "POST", self.PNL_PATH, timestamp, nonce, body,
+            ),
+            "Content-Type": "application/json",
+        }
+        try:
+            # `content=`, never `json=`: the bytes sent must be the bytes signed.
+            response = await self._http.post(f"{self._base}{self.PNL_PATH}", content=body, headers=headers)
+        except httpx.RequestError as exc:
+            raise ProxyUnreachableError(str(exc)) from exc
+
+        try:
+            parsed = response.json()
+        except ValueError:
+            raise ProxyUnreachableError(f"HTTP {response.status_code} with a non-JSON body") from None
+        if not isinstance(parsed, dict):
+            raise ProxyUnreachableError(f"HTTP {response.status_code} with an unexpected JSON shape")
+        if response.status_code >= 400 or "error" in parsed:
+            err = parsed.get("error") or {}
+            exc = from_response(
+                err.get("code", f"HTTP_{response.status_code}"),
+                err.get("message", "the Proxy rejected the request"),
+                detail=err.get("detail"),
+                request_id=err.get("request_id", ""),
+            )
+            exc.http_status = response.status_code
+            raise exc
+        return parsed
+
     async def aclose(self) -> None:
         """Close the underlying HTTP connection pools. Called from the app's
         lifespan teardown."""
         await self._client.aclose()
         self._client.close()
+        await self._http.aclose()
 
     # ------------------------------------------------------------------
     # WebSocket — credential material for ProxyWebSocketClient

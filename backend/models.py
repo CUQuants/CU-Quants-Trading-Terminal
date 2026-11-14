@@ -38,6 +38,12 @@ class TradeResponse(BaseModel):
     timestamp: str
 
 
+class TradesPage(BaseModel):
+    """One page of fills. `next_offset` is None when there are no older fills."""
+    trades: List[TradeResponse]
+    next_offset: Optional[int] = None
+
+
 class OrderEvent(BaseModel):
     """Normalized order event pushed over WS from backend to frontend."""
     type: Literal["order_event"] = "order_event"

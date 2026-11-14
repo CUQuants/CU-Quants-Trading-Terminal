@@ -13,3 +13,8 @@ export interface Trade {
   role: "maker" | "taker";
   timestamp: string;
 }
+
+export interface TradesPage {
+  trades: Trade[];
+  next_offset: number | null;
+}

@@ -23,7 +23,15 @@ function notional(t: Trade) {
 }
 
 export function TradesView({ activeExchanges }: Props) {
-  const { data: trades = [], isLoading, error, refetch } = useTrades(activeExchanges);
+  const {
+    data: trades = [],
+    isLoading,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useTrades(activeExchanges);
 
   const [filters, setFilters] = useState<Filters>({
     exchange: "all",
@@ -182,6 +190,22 @@ export function TradesView({ activeExchanges }: Props) {
           />
         )}
       </div>
+
+      {/* Pagination: older fills (Kraken Prime pages 50 at a time) */}
+      {!isLoading && !error && (
+        <div className="flex items-center justify-end gap-3 px-6 py-3">
+          <span className="text-xs text-white/30">
+            {trades.length} loaded{hasNextPage ? "" : " · all trades loaded"}
+          </span>
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={!hasNextPage || isFetchingNextPage}
+            className="text-xs text-white/40 hover:text-white/70 disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-white/10 rounded-md px-3 py-1 cursor-pointer"
+          >
+            {isFetchingNextPage ? "Loading…" : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

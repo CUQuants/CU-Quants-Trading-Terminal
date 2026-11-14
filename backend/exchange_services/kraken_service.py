@@ -11,6 +11,7 @@ from models import (
     PlaceOrderRequest,
     OrderResponse,
     TradeResponse,
+    TradesPage,
     AvailableCashResponse,
     AvailablePositionResponse,
     AllBalancesResponse,
@@ -103,10 +104,10 @@ class KrakenService(ExchangeService):
     Kraken's own body (`{"error": [], "result": {...}}`), so the parsing below
     is the same as when this service signed its own requests.
 
-    The gateway routes four actions for Prime: `place_order`, `cancel_order`,
-    `get_pending_orders` and `get_balance` (Kraken `BalanceEx`). Fills
-    (`get_fills`) are not routed yet, so `get_trades` returns an empty list
-    until they are.
+    The gateway routes `place_order`, `cancel_order`, `get_pending_orders`,
+    `get_balance` (Kraken `BalanceEx`) and `get_fills` (`TradesHistory`) for
+    Prime. `TradesHistory` returns at most 50 fills per call, newest first;
+    `get_trades_page` pages through older ones with Kraken's `ofs` offset.
 
     There is no live order stream: Kraken's `executions` channel sends no
     updates for Prime orders. The frontend refetches open orders and balances
@@ -280,25 +281,27 @@ class KrakenService(ExchangeService):
 
         return orders
 
-    async def get_trades(
-        self, pair: Optional[str] = None, limit: int = 100,
-    ) -> List[TradeResponse]:
+    async def _fetch_fills(
+        self, pair: Optional[str], offset: int,
+    ) -> Tuple[List[TradeResponse], Optional[int]]:
+        """One `TradesHistory` page starting at `offset`, plus the next offset
+        (None once Kraken's total `count` is reached)."""
         extra: dict = {}
         if pair:
             extra["pair"] = self._to_native_pair(pair)
+        if offset:
+            extra["ofs"] = offset
 
         try:
             resp = await self._call("get_fills", extra)
         except ActionNotPermittedError:
-            # Not routed for Prime yet. Starts working once the gateway routes it.
-            logger.info("Kraken fills are not routed through the gateway yet; returning none")
-            return []
-        raw_trades = resp.get("result", {}).get("trades", {})
+            logger.info("Kraken fills are not routed through the gateway; returning none")
+            return [], None
+        result = resp.get("result", {})
+        raw_trades = result.get("trades", {}) or {}
 
         trades: List[TradeResponse] = []
         for trade_id, item in raw_trades.items():
-            if len(trades) >= limit:
-                break
             native_pair = item.get("pair", "")
             fee_str = item.get("fee", "0")
             trades.append(TradeResponse(
@@ -314,7 +317,31 @@ class KrakenService(ExchangeService):
                 role="maker" if item.get("misc") == "maker" else "taker",
                 timestamp=_kraken_time_to_ms(item.get("time")),
             ))
-        return trades
+
+        next_offset: Optional[int] = offset + len(raw_trades)
+        try:
+            total = int(result.get("count", 0))
+        except (TypeError, ValueError):
+            total = 0
+        if not raw_trades or next_offset >= total:
+            next_offset = None
+        return trades, next_offset
+
+    async def get_trades(
+        self, pair: Optional[str] = None, limit: int = 100,
+    ) -> List[TradeResponse]:
+        trades, _ = await self._fetch_fills(pair, 0)
+        return trades[:limit]
+
+    async def get_trades_page(
+        self, pair: Optional[str] = None, limit: int = 100, offset: int = 0,
+    ) -> TradesPage:
+        # Kraken fixes the page size at 50, so `limit` only trims.
+        trades, next_offset = await self._fetch_fills(pair, offset)
+        if len(trades) > limit:
+            # Trimmed: resume right after the last fill we returned.
+            return TradesPage(trades=trades[:limit], next_offset=offset + limit)
+        return TradesPage(trades=trades, next_offset=next_offset)
 
     async def cancel_order(self, order_id: str, pair: str) -> bool:
         try:

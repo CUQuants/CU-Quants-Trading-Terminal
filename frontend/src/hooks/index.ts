@@ -13,3 +13,4 @@ export { useLogHealth } from "./useLogHealth";
 export { useUnresolvedOrders } from "./useUnresolvedOrders";
 export { useAuthFailures } from "./useAuthFailures";
 export { useLogs } from "./useLogs";
+export { usePnl } from "./usePnl";

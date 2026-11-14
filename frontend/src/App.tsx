@@ -12,6 +12,7 @@ import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
 import { ReportingView } from "./components/ReportingView";
+import { PnlView } from "./components/PnlView";
 
 function App() {
   const { config, addPair, removePair } = useRowConfig();
@@ -60,6 +61,7 @@ function App() {
               {currentView === "account" && (
                 <AccountView activeExchanges={activeExchanges} />
               )}
+              {currentView === "pnl" && <PnlView />}
               {currentView === "reporting" && <ReportingView />}
             </div>
           </ActiveOrdersProvider>

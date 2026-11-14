@@ -28,6 +28,12 @@ class ServiceContainer:
         except ProxyConfigError:
             self.reporting = None
 
+    @property
+    def proxy(self) -> ProxySession:
+        """The process's one gateway session (for calls that aren't an
+        exchange service's, like PnL)."""
+        return self._proxy
+
     def get_service(self, service_name: str) -> ExchangeService:
         if service_name not in self.available_services:
             raise ValueError(

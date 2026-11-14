@@ -1,15 +1,20 @@
 import type { Exchange } from "../types/orderbook";
-import type { Trade } from "../types/trades";
+import type { TradesPage } from "../types/trades";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+/**
+ * One page of fills for an exchange, newest first. Pass the returned
+ * `next_offset` back as `offset` to get older fills; it is null when there
+ * are no more (only Kraken pages today).
+ */
 export async function fetchTrades(
   exchange: Exchange,
-  pair?: string,
-  limit: number = 100,
-): Promise<Trade[]> {
+  { pair, limit = 100, offset = 0 }: { pair?: string; limit?: number; offset?: number } = {},
+): Promise<TradesPage> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (pair) params.set("pair", pair);
+  if (offset) params.set("offset", String(offset));
 
   const res = await fetch(`${API_BASE}/trades/${exchange}?${params}`);
   if (!res.ok) {

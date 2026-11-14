@@ -8,6 +8,7 @@ from models import (
     PlaceOrderRequest,
     OrderResponse,
     TradeResponse,
+    TradesPage,
     AvailableCashResponse,
     AvailablePositionResponse,
     AllBalancesResponse,
@@ -46,6 +47,15 @@ class ExchangeService(ABC):
     @abstractmethod
     async def get_trades(self, pair: Optional[str] = None, limit: int = 100) -> List[TradeResponse]:
         pass
+
+    async def get_trades_page(
+        self, pair: Optional[str] = None, limit: int = 100, offset: int = 0,
+    ) -> TradesPage:
+        """One page of fills, newest first. Exchanges without paging return a
+        single page and no `next_offset`; Kraken overrides this."""
+        if offset:
+            return TradesPage(trades=[])
+        return TradesPage(trades=await self.get_trades(pair=pair, limit=limit))
 
     @abstractmethod
     async def get_available_cash(self, pair: str) -> AvailableCashResponse:

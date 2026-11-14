@@ -319,7 +319,7 @@ async def test_missing_currency_is_zero(kraken, proxy):
 
 
 # ---------------------------------------------------------------------------
-# Trades: not routed for Prime yet
+# Trades
 # ---------------------------------------------------------------------------
 
 KRAKEN_TRADES_RESPONSE = {"error": [], "result": {"count": 2, "trades": {
@@ -351,6 +351,77 @@ async def test_get_trades_parses_fills_once_they_are_routed(kraken, proxy):
     # Kraken sends epoch seconds; the terminal expects milliseconds like OKX.
     assert by_id["TXNID-BTC-001"].timestamp == "1730385600000"
     assert by_id["TXNID-SOL-001"].timestamp == "1730385593000"
+
+
+def _fills_page(start: int, n: int, total: int) -> dict:
+    trades = {
+        f"T{i}": {"ordertxid": f"O{i}", "pair": "XXBTZUSD", "time": 1730385600.0 - i,
+                  "type": "buy", "price": "95000", "fee": "0.01", "vol": "0.001", "misc": ""}
+        for i in range(start, start + n)
+    }
+    return {"error": [], "result": {"count": total, "trades": trades}}
+
+
+@pytest.mark.asyncio
+async def test_first_page_sends_no_offset_and_points_at_the_next_one(kraken, proxy):
+    proxy.set("get_fills", _fills_page(0, 50, 120))
+
+    page = await kraken.get_trades_page()
+
+    assert proxy.last["payload"] == {}
+    assert len(page.trades) == 50
+    assert page.next_offset == 50
+
+
+@pytest.mark.asyncio
+async def test_later_page_sends_ofs(kraken, proxy):
+    proxy.set("get_fills", _fills_page(50, 50, 120))
+
+    page = await kraken.get_trades_page(offset=50)
+
+    assert proxy.last["payload"] == {"ofs": 50}
+    assert page.trades[0].id == "T50"
+    assert page.next_offset == 100
+
+
+@pytest.mark.asyncio
+async def test_last_page_has_no_next_offset(kraken, proxy):
+    proxy.set("get_fills", _fills_page(100, 20, 120))
+
+    page = await kraken.get_trades_page(offset=100)
+
+    assert len(page.trades) == 20
+    assert page.next_offset is None
+
+
+@pytest.mark.asyncio
+async def test_empty_page_has_no_next_offset(kraken, proxy):
+    proxy.set("get_fills", {"error": [], "result": {"count": 0, "trades": {}}})
+
+    page = await kraken.get_trades_page()
+
+    assert page.trades == []
+    assert page.next_offset is None
+
+
+@pytest.mark.asyncio
+async def test_limit_below_page_size_resumes_after_the_last_returned_fill(kraken, proxy):
+    proxy.set("get_fills", _fills_page(0, 50, 120))
+
+    page = await kraken.get_trades_page(limit=10)
+
+    assert [t.id for t in page.trades] == [f"T{i}" for i in range(10)]
+    assert page.next_offset == 10
+
+
+@pytest.mark.asyncio
+async def test_unrouted_fills_give_an_empty_last_page(kraken, proxy):
+    proxy.set("get_fills", ActionNotPermittedError("no route"))
+
+    page = await kraken.get_trades_page()
+
+    assert page.trades == []
+    assert page.next_offset is None
 
 
 # ---------------------------------------------------------------------------

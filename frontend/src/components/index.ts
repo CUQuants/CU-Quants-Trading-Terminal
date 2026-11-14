@@ -14,3 +14,4 @@ export { TradesTable } from "./TradesTable";
 export { AccountView } from "./AccountView";
 export { ReportingView } from "./ReportingView";
 export { ReportingLogsTable } from "./ReportingLogsTable";
+export { PnlView } from "./PnlView";
