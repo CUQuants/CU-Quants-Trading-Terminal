@@ -23,7 +23,7 @@ dev = [
 package = false
 
 [tool.uv.sources]
-# Local sibling checkout for development against this flat workspace.
-# Swap for a pinned git rev before merging, e.g.
-#   cuq-proxy-client = { git = "https://github.com/CUQuants/proxy-client.git", rev = "d82260e" }
-cuq-proxy-client = { path = "../../proxy-client", editable = true }
+# Installed straight from GitHub, pinned to a commit on main. To upgrade, bump
+# `rev` and run `uv lock`. To hack on the SDK locally, temporarily swap in:
+#   cuq-proxy-client = { path = "../../proxy-client", editable = true }
+cuq-proxy-client = { git = "https://github.com/CUQuants/proxy-client.git", rev = "8d304909872c15341b8a27e07a5bc0ff1fc0bb0d" }
