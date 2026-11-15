@@ -314,7 +314,9 @@ class KrakenService(ExchangeService):
                 size=float(item.get("vol", 0)),
                 fee=abs(float(fee_str)),
                 fee_currency=self._get_quote_ccy(self._from_native_pair(native_pair)),
-                role="maker" if item.get("misc") == "maker" else "taker",
+                # Kraken reports liquidity in the boolean `maker` field; `misc`
+                # only carries flags like "closing"/"initiated", never "maker".
+                role="maker" if item.get("maker") in (True, "true") else "taker",
                 timestamp=_kraken_time_to_ms(item.get("time")),
             ))
 

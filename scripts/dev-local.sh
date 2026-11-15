@@ -37,11 +37,10 @@ node -e '
 ' || die "Node $(node -v) is too old — Vite needs 20.19+ or 22.12+. Install Node 22 LTS
     (brew install node@22, or: nvm install && nvm use — frontend/.nvmrc pins it)."
 
-# The backend depends on the proxy-client SDK as a sibling checkout
-# (backend/pyproject.toml -> ../../proxy-client).
-PROXY_CLIENT="$(cd "$ROOT/.." && pwd)/proxy-client"
-[ -d "$PROXY_CLIENT" ] || die "proxy-client SDK not found at $PROXY_CLIENT — clone it next to this repo:
-    git clone https://github.com/CUQuants/proxy-client.git \"$PROXY_CLIENT\""
+# uv installs the proxy-client SDK straight from GitHub (see backend/pyproject.toml),
+# which needs git on PATH.
+command -v git >/dev/null || die "git not found. uv needs it to install proxy-client from GitHub.
+    xcode-select --install     (macOS)   or your package manager on Linux"
 
 # --- preflight: backend/.env --------------------------------------------------
 if [ ! -f "$BACKEND/.env" ]; then

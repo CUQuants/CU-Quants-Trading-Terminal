@@ -44,25 +44,16 @@ uv --version
 > Already have Node through nvm? Run `nvm install && nvm use` inside
 > `frontend/` and it picks up the pinned version from `frontend/.nvmrc`.
 
-### 2. Clone the repos side by side
-
-The terminal depends on the club's `proxy-client` SDK, which must be checked out
-**in the same parent folder** as this repo:
+### 2. Clone the repo
 
 ```bash
-mkdir cuquants && cd cuquants
 git clone https://github.com/CUQuants/CU-Quants-Trading-Terminal.git
-git clone https://github.com/CUQuants/proxy-client.git
 cd CU-Quants-Trading-Terminal
 ```
 
-You should end up with:
-
-```
-cuquants/
-├── CU-Quants-Trading-Terminal/   ← you run things from here
-└── proxy-client/
-```
+The club's `proxy-client` SDK is installed automatically from GitHub when the
+backend's dependencies are installed. It's pinned to a commit in
+`backend/pyproject.toml`, so you don't need to clone it.
 
 ### 3. Get your credentials
 
@@ -91,13 +82,13 @@ From then on it checks your setup, installs dependencies (this takes a minute
 the first time), and starts everything. Open the dashboard at
 **http://localhost:5173**.
 
-Press **Ctrl-C** to stop. To update later: `git pull` in both repos, then run
-the script again.
+Press **Ctrl-C** to stop. To update later, run `git pull` and then the script
+again.
 
 ### If something goes wrong
 
 The script checks your setup before it starts. If something is missing (uv,
-Node, `proxy-client`, or a value in `.env`), it stops and prints the command
+Node, git, or a value in `.env`), it stops and prints the command
 that fixes it. Other common issues:
 
 | Symptom | Fix |
@@ -123,7 +114,6 @@ running, for the gateway's Postgres.
 ```
 cuquants/
 ├── CU-Quants-Trading-Terminal/
-├── proxy-client/
 └── trading-gateway/
 ```
 
@@ -141,11 +131,16 @@ cd backend  && uv sync && uv run uvicorn app:app --reload --port 8000
 cd frontend && npm install && npm run dev            # http://localhost:5173
 ```
 
-> **Docker (`docker compose up`) is currently not supported.** The backend
-> installs `proxy-client` from a sibling folder outside the Docker build
-> context, so the image build fails. Use `scripts/dev-local.sh`. Docker will
-> work again once `proxy-client` is pinned to a git revision in
-> `backend/pyproject.toml`.
+Docker also works: `docker compose up --build` (backend on :8000, dashboard on
+:3000).
+
+### Working on proxy-client itself
+
+The SDK is pinned in `backend/pyproject.toml` under `[tool.uv.sources]`. To pick
+up a new release, change `rev` to the new commit and run `cd backend && uv lock`.
+To develop against a local checkout, temporarily swap that line for
+`cuq-proxy-client = { path = "../../proxy-client", editable = true }`, then
+switch it back before committing.
 
 ## Repo layout
 

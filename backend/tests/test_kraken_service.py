@@ -324,9 +324,11 @@ async def test_missing_currency_is_zero(kraken, proxy):
 
 KRAKEN_TRADES_RESPONSE = {"error": [], "result": {"count": 2, "trades": {
     "TXNID-SOL-001": {"ordertxid": "ORD-SOL-001", "pair": "SOLUSD", "time": 1730385593.0, "type": "buy",
-                      "price": "82.01", "cost": "82.01", "fee": "0.002", "vol": "1.0", "misc": ""},
+                      "price": "82.01", "cost": "82.01", "fee": "0.002", "vol": "1.0", "misc": "",
+                      "maker": True},
     "TXNID-BTC-001": {"ordertxid": "ORD-BTC-001", "pair": "XXBTZUSD", "time": 1730385600.0, "type": "sell",
-                      "price": "95000.50", "cost": "95.0005", "fee": "0.095", "vol": "0.001", "misc": ""},
+                      "price": "95000.50", "cost": "95.0005", "fee": "0.095", "vol": "0.001", "misc": "closing",
+                      "maker": False},
 }}}
 
 
@@ -351,6 +353,9 @@ async def test_get_trades_parses_fills_once_they_are_routed(kraken, proxy):
     # Kraken sends epoch seconds; the terminal expects milliseconds like OKX.
     assert by_id["TXNID-BTC-001"].timestamp == "1730385600000"
     assert by_id["TXNID-SOL-001"].timestamp == "1730385593000"
+    # Liquidity role comes from Kraken's boolean `maker` field, not `misc`.
+    assert by_id["TXNID-SOL-001"].role == "maker"
+    assert by_id["TXNID-BTC-001"].role == "taker"
 
 
 def _fills_page(start: int, n: int, total: int) -> dict:

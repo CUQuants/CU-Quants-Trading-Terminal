@@ -79,11 +79,6 @@ CUQ_PROXY_OPERATOR_NAME=J. Rivera
 
 ## Docker Basics
 
-> **Currently not supported:** the backend image build fails because
-> `proxy-client` is installed from a sibling folder outside the build context.
-> Use `scripts/dev-local.sh` instead. This section applies again once
-> `proxy-client` is pinned to a git revision.
-
 ### Installing Docker
 
 1. **macOS / Windows:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
