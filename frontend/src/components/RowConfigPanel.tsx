@@ -18,7 +18,7 @@ interface Props {
 }
 
 export function RowConfigPanel({ configuredPairs, onAdd }: Props) {
-  const [exchange, setExchange] = useState<Exchange>("okx");
+  const [exchange, setExchange] = useState<Exchange>("kraken");
   const [pairInput, setPairInput] = useState("");
 
   const pair = normalizePair(pairInput);
