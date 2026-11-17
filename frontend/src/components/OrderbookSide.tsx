@@ -6,10 +6,12 @@ interface OrderbookSideProps {
   levels: OrderbookLevel[];
   side: "bid" | "ask";
   title: string;
+  quoteCurrency?: string;
   activePrices?: Set<number>;
+  onPriceSelect?: (price: number) => void;
 }
 
-export function OrderbookSide({ levels, side, title, activePrices }: OrderbookSideProps) {
+export function OrderbookSide({ levels, side, title, quoteCurrency = "USD", activePrices, onPriceSelect }: OrderbookSideProps) {
   const maxQty = useMemo(
     () => Math.max(...levels.map((l) => l.qty), 0),
     [levels]
@@ -35,7 +37,7 @@ export function OrderbookSide({ levels, side, title, activePrices }: OrderbookSi
         </span>
       </div>
       <div className="flex justify-between px-3 py-2 text-[11px] uppercase tracking-wide text-white/40 border-b border-white/10">
-        <span>Price (USD)</span>
+        <span>Price ({quoteCurrency})</span>
         <span>Quantity</span>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -45,6 +47,7 @@ export function OrderbookSide({ levels, side, title, activePrices }: OrderbookSi
             level={level}
             side={side}
             maxQty={maxQty}
+            onPriceSelect={onPriceSelect}
             hasMyOrder={activePrices?.has(level.price)}
           />
         ))}

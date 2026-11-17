@@ -126,6 +126,7 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
             onClick={() => setSelected(null)}
           />
           <OrderPanel
+            key={`${selected.exchange}-${selected.pair}`}
             exchange={selected.exchange}
             pair={selected.pair}
             orderbook={getOrderbook(selected.exchange, selected.pair)}

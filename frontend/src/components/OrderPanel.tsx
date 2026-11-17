@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Exchange, OrderbookData } from "../types/orderbook";
 import { Orderbook } from "./Orderbook";
 import { OrderList } from "./OrderList";
@@ -11,8 +12,10 @@ interface Props {
 }
 
 export function OrderPanel({ exchange, pair, orderbook, onClose }: Props) {
+  const [priceSelection, setPriceSelection] = useState<{ price: number } | null>(null);
+
   return (
-    <div className="fixed inset-y-0 right-0 w-[480px] bg-[#0a0a0a] border-l border-white/10 flex flex-col z-50 shadow-2xl">
+    <div className="fixed inset-y-0 right-0 w-full max-w-[480px] bg-[#0a0a0a] border-l border-white/10 flex flex-col z-50 shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
         <div>
@@ -34,7 +37,7 @@ export function OrderPanel({ exchange, pair, orderbook, onClose }: Props) {
         {/* Orderbook */}
         <div className="border-b border-white/10">
           {orderbook ? (
-            <Orderbook data={orderbook} exchange={exchange} pair={pair} />
+            <Orderbook data={orderbook} exchange={exchange} pair={pair} onPriceSelect={(price) => setPriceSelection({ price })} />
           ) : (
             <div className="py-8 text-center text-white/30 text-sm">
               Waiting for orderbook data...
@@ -59,7 +62,7 @@ export function OrderPanel({ exchange, pair, orderbook, onClose }: Props) {
               Place Order
             </h3>
           </div>
-          <OrderPlacementForm exchange={exchange} pair={pair} />
+          <OrderPlacementForm exchange={exchange} pair={pair} priceSelection={priceSelection} />
         </div>
       </div>
     </div>

@@ -1,17 +1,23 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Exchange, OrderbookData } from "../types/orderbook";
 import { useActiveOrders } from "../contexts/ActiveOrdersContext";
 import { OrderbookSide } from "./OrderbookSide";
 
-const VISIBLE_LEVELS = 5;
+import { StackedOrderbook } from "./StackedOrderbook";
+import { DepthChart } from "./DepthChart";
+
+const VISIBLE_LEVELS = 8;
 
 interface OrderbookProps {
   data: OrderbookData;
   exchange: Exchange;
   pair: string;
+  onPriceSelect?: (price: number) => void;
 }
 
-export function Orderbook({ data, exchange, pair }: OrderbookProps) {
+export function Orderbook({ data, exchange, pair, onPriceSelect }: OrderbookProps) {
+  const displayPair = exchange === "okx" ? pair.replace("/USD", "/USDT") : pair;
+  const [layout, setLayout] = useState("split");
   const { hasOrderAtPrice } = useActiveOrders();
 
   const spread = useMemo(() => {
@@ -41,7 +47,7 @@ export function Orderbook({ data, exchange, pair }: OrderbookProps) {
     <div className="bg-[#0f0f0f] rounded-xl border border-white/10 overflow-hidden max-w-[800px] mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center px-5 py-4 bg-white/[0.02] border-b border-white/10">
-        <h2 className="text-xl font-bold text-white m-0">{data.symbol}</h2>
+        <h2 className="text-xl font-bold text-white m-0">{displayPair}</h2>
         {spread && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-white/50">Spread:</span>
@@ -52,13 +58,24 @@ export function Orderbook({ data, exchange, pair }: OrderbookProps) {
         )}
       </div>
 
-      {/* Body */}
-      <div className="flex flex-col sm:flex-row">
+      <div className="flex gap-1 border-b border-white/10 p-2" role="group" aria-label="Order book layout">
+        {[["split", "Split"], ["stacked", "Order book"], ["depth", "Depth"]].map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={layout === value} onClick={() => setLayout(value)}
+            className={`rounded-lg px-4 py-2 text-sm ${layout === value ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/5"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {layout === "stacked" && <StackedOrderbook data={data} pair={displayPair} activePrices={activePrices} onPriceSelect={onPriceSelect} />}
+      {layout === "depth" && <DepthChart data={data} />}
+      {layout === "split" && <div className="flex flex-col sm:flex-row">
         <OrderbookSide
           levels={visibleBids}
           side="bid"
           title="Bids"
+          quoteCurrency={displayPair.split("/")[1]}
           activePrices={activePrices}
+          onPriceSelect={onPriceSelect}
         />
 
         {/* Spread divider */}
@@ -80,9 +97,11 @@ export function Orderbook({ data, exchange, pair }: OrderbookProps) {
           levels={visibleAsks}
           side="ask"
           title="Asks"
+          quoteCurrency={displayPair.split("/")[1]}
           activePrices={activePrices}
+          onPriceSelect={onPriceSelect}
         />
-      </div>
+      </div>}
     </div>
   );
 }

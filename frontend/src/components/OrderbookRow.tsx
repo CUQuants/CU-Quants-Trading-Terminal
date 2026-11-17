@@ -5,9 +5,10 @@ interface OrderbookRowProps {
   side: "bid" | "ask";
   maxQty: number;
   hasMyOrder?: boolean;
+  onPriceSelect?: (price: number) => void;
 }
 
-export function OrderbookRow({ level, side, maxQty, hasMyOrder }: OrderbookRowProps) {
+export function OrderbookRow({ level, side, maxQty, hasMyOrder, onPriceSelect }: OrderbookRowProps) {
   const depthPercent = maxQty > 0 ? (level.qty / maxQty) * 100 : 0;
   const isBid = side === "bid";
 
@@ -25,14 +26,18 @@ export function OrderbookRow({ level, side, maxQty, hasMyOrder }: OrderbookRowPr
         }`}
         style={{ width: `${depthPercent}%` }}
       />
-      <span
-        className={`z-10 font-medium ${isBid ? "text-green-500" : "text-red-500"}`}
+      <button
+        type="button"
+        disabled={!onPriceSelect}
+        onClick={() => onPriceSelect?.(level.price)}
+        aria-label={`Use ${side} price ${level.price}`}
+        className={`z-10 font-medium rounded focus-visible:outline-2 focus-visible:outline-blue-400 enabled:cursor-pointer enabled:hover:underline ${isBid ? "text-green-500" : "text-red-500"}`}
       >
         {level.price.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 5,
         })}
-      </span>
+      </button>
       {hasMyOrder && (
         <span className="z-10 text-yellow-400 text-[10px] self-center mx-1">●</span>
       )}
