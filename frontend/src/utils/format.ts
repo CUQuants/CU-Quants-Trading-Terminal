@@ -9,20 +9,24 @@ export function formatNum(n: number, decimals = 4): string {
   });
 }
 
-/**
- * Format a millisecond-epoch timestamp string into a short human-readable form.
- * Falls back to the raw string if it can't be parsed as a number.
- */
+const tradeTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Denver",
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  timeZoneName: "short",
+});
+
 export function formatTime(ts: string): string {
+  if (!ts.trim()) return "—";
   const ms = Number(ts);
-  if (isNaN(ms)) return ts;
-  return new Date(ms).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  if (!Number.isFinite(ms)) return "—";
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return "—";
+  return tradeTimeFormatter.format(date);
 }
 
 /** Uppercase the first letter of a string. */
