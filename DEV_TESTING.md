@@ -180,3 +180,29 @@ demo still needs one live provider refresh and one live Claude response.
   gateway testing.
 - Real (non-simulated) trading — that's a property of the gateway you point at,
   never a terminal setting.
+
+## Order-book layouts and price selection (#53, #54)
+
+Frontend regression checks (mocked market frames and order hooks; no exchange orders):
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run build
+```
+
+To review with public exchange data, run the frontend and open `/concepts.html`.
+Select an exchange and pair. The stacked book and cumulative depth chart use
+existing exchange WebSocket providers. Waiting/connection/error states replace
+sample data; public feeds do not require gateway credentials. OKX's USD alias
+is labeled USDT to match the subscribed instrument.
+
+In the main dashboard, open a pair's panel and choose Split, Order book, or Depth.
+In either book layout, clicking or keyboard-activating a price fills the order
+form. It preserves side, size, and iceberg display size. Market switches to limit
+so the chosen price is meaningful. Subsequent market updates must not overwrite
+that draft. Changing the selected exchange/pair starts a new form.
+
+A level selection never submits an order. Actual submission still uses the
+existing order button and backend/gateway setup described above.

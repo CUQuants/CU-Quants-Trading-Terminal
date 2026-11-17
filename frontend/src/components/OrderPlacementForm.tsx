@@ -8,9 +8,10 @@ import { formatNum } from "../utils/format";
 interface Props {
   exchange: Exchange;
   pair: string;
+  priceSelection?: { price: number } | null;
 }
 
-export function OrderPlacementForm({ exchange, pair }: Props) {
+export function OrderPlacementForm({ exchange, pair, priceSelection }: Props) {
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [type, setType] = useState<"limit" | "market" | "iceberg">("limit");
   const [price, setPrice] = useState("");
@@ -20,10 +21,23 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
 
   useEffect(() => {
     if (type === "iceberg" && exchange !== "kraken") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setType("limit");
       setVisibleSize("");
     }
   }, [exchange, type]);
+
+  useEffect(() => {
+    if (!priceSelection || !Number.isFinite(priceSelection.price) || priceSelection.price <= 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPrice(String(priceSelection.price));
+    setType(current => current === "market" ? "limit" : current);
+    setErrors(current => {
+      const next = { ...current };
+      delete next.price;
+      return next;
+    });
+  }, [priceSelection]);
 
   const mutation = usePlaceOrder(exchange);
   const cashQuery = useAvailableCash(exchange, pair);
@@ -178,6 +192,7 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
             Price
           </label>
           <input
+            aria-label="Price"
             type="number"
             step="any"
             value={price}
@@ -220,6 +235,7 @@ export function OrderPlacementForm({ exchange, pair }: Props) {
         <input
           type="number"
           step="any"
+          aria-label="Size"
           value={size}
           onChange={(e) => setSize(e.target.value)}
           placeholder="0.00"
