@@ -53,7 +53,7 @@ export function TradesTable({ trades, sortKey, sortDir, onSort }: Props) {
       <thead>
         <tr className="text-[10px] uppercase tracking-wider text-white/30 border-b border-white/10">
           <th className="px-3 py-2 text-left font-medium">
-            <SortHeader label="Time" sortKey="timestamp" {...shared} />
+            <SortHeader label="Time (Colorado)" sortKey="timestamp" {...shared} />
           </th>
           <th className="px-3 py-2 text-left font-medium">
             <SortHeader label="Exchange" sortKey="exchange" {...shared} />
@@ -87,7 +87,7 @@ export function TradesTable({ trades, sortKey, sortDir, onSort }: Props) {
             key={`${t.exchange}-${t.id}`}
             className="border-b border-white/5 hover:bg-white/[0.03] transition-colors"
           >
-            <td className="px-3 py-2 text-white/50 tabular-nums truncate">
+            <td className="px-3 py-2 text-white/50 tabular-nums" title={formatTime(t.timestamp)}>
               {formatTime(t.timestamp)}
             </td>
             <td className="px-3 py-2 text-white/60 truncate">{capitalize(t.exchange)}</td>

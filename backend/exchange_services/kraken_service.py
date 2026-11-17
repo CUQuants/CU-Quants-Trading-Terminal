@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from exchange_services.exchange import ExchangeService
+from exchange_services.timestamps import seconds_to_milliseconds
 from exchange_services.kraken_order_stream import KrakenOrderStream
 from models import (
     PlaceOrderRequest,
@@ -320,7 +321,7 @@ class KrakenService(ExchangeService):
                 fee=abs(float(fee_str)),
                 fee_currency=self._get_quote_ccy(self._from_native_pair(native_pair)),
                 role="maker" if item.get("misc") == "maker" else "taker",
-                timestamp=str(item.get("time", "")),
+                timestamp=seconds_to_milliseconds(item.get("time")),
             ))
         return trades
 
