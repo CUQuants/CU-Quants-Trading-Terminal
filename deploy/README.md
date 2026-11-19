@@ -60,7 +60,8 @@ browser ──https──▶ Caddy (:443)
    ```
 2. **Create the directories and the env file:**
    ```bash
-   mkdir -p /srv/cuq-terminal/app /srv/cuq-terminal/frontend
+   sudo mkdir -p /srv/cuq-terminal/app /srv/cuq-terminal/frontend   # /srv is root-owned
+   sudo chown -R admin:admin /srv/cuq-terminal
    # from your Mac:  scp deploy/terminal.env.example cuq-proxy:/srv/cuq-terminal/.env
    chmod 600 /srv/cuq-terminal/.env
    ```
