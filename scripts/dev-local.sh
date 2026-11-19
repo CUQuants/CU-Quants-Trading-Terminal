@@ -84,30 +84,45 @@ if [ "${SKIP_INSTALL:-0}" != "1" ]; then
   fi
 fi
 
-# --- run both; kill the whole process group on exit --------------------------
-# HUP matters: closing the terminal window sends SIGHUP, not INT. Without it
-# the script dies untrapped and `uv run uvicorn` (which ignores HUP) is
-# orphaned, still holding the backend port. `kill 0` signals this script too,
-# so ignore TERM here and `wait` for the children: otherwise the script dies
-# first, the shell prints its prompt, and uvicorn's shutdown logs land after
-# it, which makes it look hung.
+# --- run both; stop each child's process group on exit ----------------------
+# Each child runs in its OWN process group (set -m), so Ctrl-C only reaches this
+# script and every child gets exactly one signal, from cleanup(). Previously
+# Ctrl-C sent SIGINT to uvicorn's reloader and `kill 0` sent SIGTERM right
+# behind it; the second signal re-entered uvicorn's signal handler while it held
+# a threading.Event lock and the reloader deadlocked forever, still holding the
+# backend port (worker left <defunct>). HUP (terminal closed) is trapped too.
+# Children get stdin from /dev/null: a background process group that reads the
+# terminal is stopped by SIGTTIN (Vite's keyboard shortcuts would do that).
+set -m
+backend_pid=""
+frontend_pid=""
 cleanup() {
-  trap - EXIT INT HUP
-  trap '' TERM
-  kill 0 2>/dev/null || true
-  wait 2>/dev/null || true
+  trap - EXIT INT TERM HUP
+  local pids="$backend_pid $frontend_pid" pid alive i
+  for pid in $pids; do kill -TERM -- "-$pid" 2>/dev/null || true; done
+  # Give them up to 10s to shut down cleanly, then force it.
+  for i in $(seq 1 20); do
+    alive=0
+    for pid in $pids; do kill -0 -- "-$pid" 2>/dev/null && alive=1; done
+    [ "$alive" = 0 ] && break
+    sleep 0.5
+  done
+  if [ "$alive" = 1 ]; then
+    warn "children did not exit within 10s — sending SIGKILL"
+    for pid in $pids; do kill -KILL -- "-$pid" 2>/dev/null || true; done
+  fi
   log "stopped"
   exit 0
 }
 trap cleanup EXIT INT TERM HUP
 
 log "backend  -> http://127.0.0.1:$BACKEND_PORT   (routes OKX through $GW)"
-( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) &
+( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) </dev/null &
 backend_pid=$!
 
 log "frontend -> http://127.0.0.1:$FRONTEND_PORT"
 ( cd "$FRONTEND" && VITE_API_URL="http://localhost:$BACKEND_PORT" \
-    exec npm run dev -- --port "$FRONTEND_PORT" --strictPort ) &
+    exec npm run dev -- --port "$FRONTEND_PORT" --strictPort ) </dev/null &
 frontend_pid=$!
 
 log "both running (backend $backend_pid, frontend $frontend_pid) — Ctrl-C to stop both"
