@@ -16,6 +16,7 @@ from proxy_client.errors import ProxyError
 from proxy_client.signing import compute_signature
 
 from exchange_services.proxy_session import ProxySession
+from auth import current_container
 from routes.pnl import router
 
 SECRET = "c2VjcmV0LXNlY3JldA=="
@@ -87,7 +88,8 @@ class _Container:
 def _client(handler) -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    app.state.service_container = _Container(_session(handler))
+    container = _Container(_session(handler))
+    app.dependency_overrides[current_container] = lambda: container
     return TestClient(app)
 
 

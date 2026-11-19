@@ -7,33 +7,45 @@ command: `scripts/dev-local.sh`, dashboard at http://localhost:5173).
 
 ---
 
+## Signing in
+
+The terminal's first page asks for your gateway operator credential: the four
+`proxy:` values from your xlrts `config.yaml` (`api_key`, `api_secret`,
+`operator_id`, `operator_name`).
+- Each trader signs in with their own credential, so every request is
+  attributed to that trader in the gateway's audit log.
+- The secret is held only in the terminal server's memory while you're signed
+  in.
+
+See [Signing in](./README.md#signing-in) for details.
+
 ## Environment Variables
 
-Create a `.env` file in `backend/` (see `backend/.env.example` for a template).
+`backend/.env` holds **server settings only**; there are no trader credentials
+in it. See `backend/.env.example` for a template.
 
 ### OKX — through the CU Quants Proxy
 
 The terminal holds **no OKX keys**. Every OKX call goes through the CU Quants
-Trading Gateway ("the Proxy"), which holds the club's vaulted OKX key, enforces
-the action allowlist, and audits every request. You need an **operator
-credential** from the Proxy (see `trading-gateway/NEW-USER.md`).
+Trading Gateway ("the Proxy"). The gateway holds the club's vaulted OKX key,
+enforces the action allowlist, and audits every request, signed with the
+credential of whichever trader is signed in.
 
 | Variable | Description |
 |----------|-------------|
-| `CUQ_PROXY_URL` | Base URL of the gateway, e.g. `https://your-gateway-host.example` |
-| `CUQ_PROXY_API_KEY` | Your operator API key (`cuq_op_...`) |
-| `CUQ_PROXY_SECRET` | The secret paired with that key — read at startup, never stored |
-| `CUQ_PROXY_OPERATOR_ID` | Your operator id, e.g. `cuq-014` |
-| `CUQ_PROXY_OPERATOR_NAME` | Your name, for the audit log |
+| `CUQ_PROXY_URL` | Base URL of the gateway, e.g. `https://178-105-55-5.sslip.io` (on the gateway's own box: `http://127.0.0.1:8080`) |
 | `CUQ_PROXY_WS_URL` | *(optional)* explicit `wss://` base; omit to derive it from `CUQ_PROXY_URL` |
+| `TERMINAL_COOKIE_SECURE` | *(default `true`)* mark the session cookie Secure; `false` only for plain-http local dev |
+| `TERMINAL_SESSION_IDLE_HOURS` / `TERMINAL_SESSION_MAX_HOURS` | *(default 12 / 24)* sign-out after idle / absolute |
+| `TERMINAL_ALLOWED_ORIGINS` | *(optional)* extra browser origins, comma-separated; same-origin is always allowed |
 
 ### Audit reporting (optional)
 
 The **Reporting** tab reads the gateway's read-only audit-log API
 (`proxy_admin.reporting` — a separate process from the Proxy, its own port,
-no reverse-proxy route). It reuses the same `CUQ_PROXY_*` operator
-credential above; only the URL is new, and your operator needs
-`admin_role='auditor'` on the gateway (ask whoever issued your credential).
+no reverse-proxy route). It is signed with the credential you signed in with;
+only the URL is server config, and your operator needs `admin_role='auditor'`
+on the gateway (ask whoever issued your credential).
 
 | Variable | Description |
 |----------|-------------|
@@ -54,8 +66,8 @@ and point `CUQ_PROXY_URL` at it.
 ### Kraken
 
 Goes through the Proxy too, to the club's **Kraken Prime** account (gateway
-exchange `kraken_prime`). The terminal holds no Kraken keys; the same
-`CUQ_PROXY_*` credential covers it.
+exchange `kraken_prime`). The terminal holds no Kraken keys; your sign-in
+credential covers it.
 
 What works for now: placing and cancelling orders, open orders, and balances.
 Not yet: fill history (the Trades view is empty for Kraken) and live order
@@ -67,13 +79,11 @@ elsewhere) shows up on the next refresh.
 
 ```env
 CUQ_PROXY_URL=http://localhost:8100
-CUQ_PROXY_API_KEY=cuq_op_...
-CUQ_PROXY_SECRET=...
-CUQ_PROXY_OPERATOR_ID=cuq-014
-CUQ_PROXY_OPERATOR_NAME=J. Rivera
 ```
 
 **Security:** Never commit `.env` or share your keys. `.env` is in `.gitignore`.
+If an old `backend/.env` still has `CUQ_PROXY_API_KEY` / `CUQ_PROXY_SECRET` /
+`CUQ_PROXY_OPERATOR_*` lines, delete them. They're no longer read.
 
 ---
 
@@ -101,7 +111,9 @@ Run Docker Compose from the repo root, since it looks for `docker-compose.yml` i
 docker compose up --build
 ```
 
-Once running, the frontend is at http://localhost:3000 and the backend at http://localhost:8000.
+Once running, open the dashboard at http://localhost:3000 and sign in. (It
+reaches the backend through the Vite server's `/api` proxy; the backend's own
+:8000 is not meant to be opened in a browser.)
 
 ### Common Commands
 
@@ -125,21 +137,24 @@ Once running, the frontend is at http://localhost:3000 and the backend at http:/
 
 ## Frontend Environment (Optional)
 
-The dashboard uses `VITE_API_URL` to reach the backend. Default: `http://localhost:8000`.
+The dashboard calls the backend at `/api` on its own origin. Vite proxies that
+to `BACKEND_URL` (default `http://localhost:8000`) in dev, and Caddy proxies it
+in production. Same-origin is what makes the HttpOnly session cookie work, so
+there is normally nothing to set.
 
-If your backend runs elsewhere (e.g. another host or port), create `frontend/.env`:
-
-```env
-VITE_API_URL=http://your-backend-host:8000
-```
+`VITE_API_URL` still overrides the base at build time, but pointing it at
+another origin also needs that origin in the backend's
+`TERMINAL_ALLOWED_ORIGINS`, and a cookie setup that works cross-site. Avoid it.
 
 ---
 
 ## Troubleshooting
 
-- **Backend won’t start:** Ensure `backend/.env` exists and sets all five `CUQ_PROXY_*` variables. A missing one aborts startup with a message naming it. Also confirm the gateway at `CUQ_PROXY_URL` is reachable.
+- **Backend won’t start:** Ensure `backend/.env` exists and sets `CUQ_PROXY_URL`. Without it, startup aborts with a message saying so.
+- **Sign-in rejected ("did not accept these credentials"):** the API key, secret or operator ID is wrong, or your computer's clock is more than 5 s off. The gateway gives the same answer for all of these. The message includes the gateway's `request_id` for whoever runs it.
+- **"Can't reach the trading gateway" at sign-in:** the backend can't reach `CUQ_PROXY_URL`. Check it, and check that the gateway's `/healthz` answers.
 - **Reporting tab shows "not configured" (`503`):** `CUQ_REPORTING_URL` is unset — this is expected until you add it; it does not stop the rest of the terminal from working.
 - **Reporting tab / API returns `403 ACTION_NOT_PERMITTED`:** your operator authenticated fine but isn't authorized to view the audit log — ask whoever issued your credential to grant `admin_role='auditor'`.
-- **Frontend can’t reach backend:** Check `VITE_API_URL` and that the backend is running on that URL.
+- **Frontend can’t reach backend:** Check that the backend is running where Vite's `BACKEND_URL` points (default `http://localhost:8000`), and that you opened the dashboard on the Vite port.
 - **Docker build fails:** Run `docker compose down` and `docker compose up --build` again.
 - **Port already in use:** Stop other services on 3000 or 8000, or change ports in `docker-compose.yml`.

@@ -11,9 +11,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Exchange } from "../types/orderbook";
 import { hasBackend } from "../types/orderbook";
 import type { BackendWsMessage, Order, OrderEvent } from "../types/orders";
+import { AUTH_EXPIRED_EVENT, wsBase } from "../api/client";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const WS_BASE = API_BASE.replace(/^http/, "ws");
+/** Close code the backend uses for a socket with no live session. */
+const WS_UNAUTHORIZED = 4401;
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 2000, 4000];
 
@@ -109,7 +110,7 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
   }, []);
 
   function connectExchange(exchange: Exchange) {
-    const url = `${WS_BASE}/orders/${exchange}`;
+    const url = `${wsBase()}/orders/${exchange}`;
     const ws = new WebSocket(url);
     wsMapRef.current[exchange] = ws;
 
@@ -147,11 +148,19 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
 
     ws.onerror = () => {};
 
-    ws.onclose = () => {
+    ws.onclose = (ev: CloseEvent) => {
       delete wsMapRef.current[exchange];
 
       if (closingRef.current.has(exchange)) {
         closingRef.current.delete(exchange);
+        return;
+      }
+
+      if (ev.code === WS_UNAUTHORIZED) {
+        // Session gone (signed out elsewhere, expired, or server restarted):
+        // retrying can't help. Let AuthContext send the trader to sign-in.
+        setStatus((prev) => ({ ...prev, [exchange]: "disconnected" }));
+        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
         return;
       }
 

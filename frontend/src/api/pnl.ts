@@ -1,10 +1,8 @@
 import type { PnlReport } from "../types/pnl";
-import { ApiError } from "./orders";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { ApiError, apiFetch } from "./client";
 
 export async function fetchPnl(): Promise<PnlReport> {
-  const res = await fetch(`${API_BASE}/pnl`);
+  const res = await apiFetch("/pnl");
   if (!res.ok) {
     let message = `Request failed: ${res.status}`;
     try {

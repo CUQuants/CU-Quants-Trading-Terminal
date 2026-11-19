@@ -69,7 +69,7 @@ export const EXCHANGE_SYMBOLS: Record<Exchange, string[]> = {
 };
 
 /**
- * Exchanges that have a backend relay at localhost:8000
+ * Exchanges that have a backend order-event relay (/api/orders/{exchange})
  * (order events WS, REST orders, account endpoints).
  * Gemini currently only provides public market data via its own WS.
  */

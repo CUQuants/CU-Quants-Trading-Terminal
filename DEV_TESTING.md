@@ -40,20 +40,20 @@ cd ../CU-Quants-Trading-Terminal
 cp backend/.env.example backend/.env
 ```
 
-Fill in `backend/.env` from the gateway's creds output. **The names differ** —
-map them:
+In `backend/.env`, set only `CUQ_PROXY_URL=http://127.0.0.1:8080`. That is the
+only required variable: the backend holds no trader credentials. Leave
+`CUQ_PROXY_WS_URL` unset; the SDK derives `ws://127.0.0.1:8080/v1/okx/ws` from
+`CUQ_PROXY_URL`.
 
-| `backend/.env` (terminal's name) | value / source |
+The gateway's creds output is what you **type into the sign-in page**. The
+names differ, so map them:
+
+| Sign-in page field | gateway creds value |
 |---|---|
-| `CUQ_PROXY_URL` | `http://127.0.0.1:8080` |
-| `CUQ_PROXY_API_KEY` | gateway's `CUQ_OPERATOR_API_KEY` |
-| `CUQ_PROXY_SECRET` | gateway's `CUQ_OPERATOR_API_SECRET` |
-| `CUQ_PROXY_OPERATOR_ID` | gateway's `CUQ_OPERATOR_ID` (`cuq-002`) |
-| `CUQ_PROXY_OPERATOR_NAME` | gateway's `CUQ_OPERATOR_NAME` |
-
-All five are mandatory — the backend builds `ServiceContainer` at startup and
-won't boot without them. Leave `CUQ_PROXY_WS_URL` unset; the SDK derives
-`ws://127.0.0.1:8080/v1/okx/ws` from `CUQ_PROXY_URL`.
+| API key | `CUQ_OPERATOR_API_KEY` |
+| API secret | `CUQ_OPERATOR_API_SECRET` |
+| Operator ID | `CUQ_OPERATOR_ID` (`cuq-002`) |
+| Operator name | `CUQ_OPERATOR_NAME` |
 
 Kraken goes through the gateway too, as exchange `kraken_prime`. For the Kraken
 view to place orders, the gateway needs `KRAKEN_PRIME_API_KEY`,
@@ -69,24 +69,40 @@ scripts/dev-local.sh
 Runs both natively, no Docker, and tears both down on Ctrl-C:
 
 - backend  — `http://127.0.0.1:8000` (reads `backend/.env`)
-- dashboard — `http://127.0.0.1:5173`
+- dashboard — `http://localhost:5173` (Vite proxies `/api` to the backend, so
+  the browser is same-origin with it, as it is through Caddy in production)
 
-The script checks `backend/.env` has the five `CUQ_PROXY_*` vars and pings the
-gateway's `/healthz` first (warns if it's down). First run does `uv sync` and
-`npm install`; `SKIP_INSTALL=1` skips that. Override ports with `BACKEND_PORT` /
-`FRONTEND_PORT` (the frontend is pointed at the backend via `VITE_API_URL`
-automatically).
+The script:
+- checks that `backend/.env` sets `CUQ_PROXY_URL`, and warns about any leftover
+  credential lines;
+- pings the gateway's `/healthz` first and warns if it's down;
+- runs the backend with `TERMINAL_COOKIE_SECURE=false`, since local dev is
+  plain http.
+
+The first run does `uv sync` and `npm install`; `SKIP_INSTALL=1` skips that.
+Override ports with `BACKEND_PORT` / `FRONTEND_PORT`; the Vite proxy follows
+`BACKEND_PORT` automatically.
 
 ## 4 — Smoke-test the chain
 
-Before opening the UI:
+Before opening the UI, sign in with curl (the values come from the gateway's
+creds output), then call a route using the session cookie:
 
 ```bash
-curl -s localhost:8000/account/balances/okx | head -c 400
+curl -s -c /tmp/terminal.jar -H 'Content-Type: application/json' \
+  -d '{"api_key":"cuq_op_…","api_secret":"…","operator_id":"cuq-002","operator_name":"Dev"}' \
+  localhost:8000/auth/login
+curl -s -b /tmp/terminal.jar localhost:8000/account/balances/okx | head -c 400
 ```
 
-A balance JSON means the whole path works: SDK signing → gateway auth → action
-allowlist → `x-simulated-trading: 1` → OKX demo → audit row.
+`/tmp/terminal.jar` now holds a live session cookie. Delete it when you're
+done (`rm /tmp/terminal.jar`), or sign out with
+`curl -s -b /tmp/terminal.jar -X POST localhost:8000/auth/logout`.
+
+A balance JSON means the whole path works: sign-in → SDK signing (with your
+credential) → gateway auth → action allowlist → `x-simulated-trading: 1` → OKX
+demo → audit row. Without the cookie, every trading route answers `401
+NOT_SIGNED_IN`.
 
 ## 5 — Place a test order
 
@@ -94,7 +110,8 @@ In the dashboard: select **OKX**, place a **limit** buy on BTC/USD well below
 market (e.g. `0.001 @ 1000`) so it rests. Expect:
 
 - it shows up in pending orders — order events arrive over
-  `ws://localhost:8000/orders/okx`, which the backend relays from the gateway's
+  `ws://localhost:5173/api/orders/okx` (Vite → backend `/orders/okx`, authenticated
+  by your session cookie), which the backend relays from the gateway's
   `ws://127.0.0.1:8080/v1/okx/ws`
 - cancelling it removes it
 - the gateway shell logs one line per request
@@ -122,8 +139,8 @@ CUQ_REPORTING_URL=http://127.0.0.1:8090
 Restart `scripts/dev-local.sh` (or just the backend) to pick it up, then:
 
 ```bash
-curl -s localhost:8000/reporting/health | head -c 400
-curl -s "localhost:8000/reporting/logs?limit=5"
+curl -s -b /tmp/terminal.jar localhost:8000/reporting/health | head -c 400   # after signing in as in step 4
+curl -s -b /tmp/terminal.jar "localhost:8000/reporting/logs?limit=5"
 ```
 
 A JSON body means the chain works end to end. Place an order (step 5) and
@@ -137,7 +154,9 @@ Leaving `CUQ_REPORTING_URL` unset is fine — trading still works, and
 
 | Symptom | Cause / fix |
 |---|---|
-| `ProxyConfigError: ... cannot start without: CUQ_PROXY_*` | `backend/.env` missing or misnamed vars (see the mapping table above), or uvicorn launched from outside `backend/` — bare `load_dotenv()` searches up from the cwd. `scripts/dev-local.sh` handles this. |
+| `RuntimeError: CUQ_PROXY_URL is not set` | `backend/.env` is missing, or uvicorn was launched from outside `backend/`. A bare `load_dotenv()` searches up from the current directory; `scripts/dev-local.sh` handles this. |
+| sign-in "did not accept these credentials" | wrong value in a field (see the mapping table above), or the gateway's DB was reset. Re-run `scripts/dev-gateway.sh creds`. |
+| every route `401 NOT_SIGNED_IN` | no session cookie: sign in first. Opening the backend on :8000 directly in a browser won't carry the dashboard's cookie. |
 | backend 5xx on `/account/*` or `/orders/*`, gateway logs nothing | gateway not running — `cd ../trading-gateway && scripts/dev-gateway.sh up` |
 | `EXCHANGE_ERROR`, OKX code `50119` / `60032` "API key doesn't exist" | the demo key is on the wrong OKX platform (US vs international) — see `trading-gateway/SANDBOX_INTEGRATION.md` |
 | order rejected for size / price tick | adjust size or price; not a wiring problem |

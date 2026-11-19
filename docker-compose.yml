@@ -5,6 +5,9 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
+    environment:
+      # Plain http on localhost: the session cookie can't be Secure.
+      - TERMINAL_COOKIE_SECURE=false
     restart: unless-stopped
 
   frontend:
@@ -16,7 +19,9 @@ services:
     volumes:
       - ./frontend/src:/app/src
     environment:
-      - VITE_API_URL=http://localhost:8000
+      # The browser calls /api on the Vite server, which proxies to the
+      # backend container (same-origin, so the session cookie works).
+      - BACKEND_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped

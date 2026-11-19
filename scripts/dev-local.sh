@@ -3,7 +3,11 @@
 # Docker, so it can reach a CU Quants gateway on a localhost URL.
 #
 # Backend  : http://127.0.0.1:8000   (FastAPI, reads backend/.env)
-# Dashboard: http://127.0.0.1:5173   (Vite)
+# Dashboard: http://localhost:5173   (Vite; proxies /api -> the backend)
+#
+# Open the dashboard and sign in with your own gateway credential: the four
+# `proxy:` values from your xlrts config.yaml. backend/.env only says where the
+# gateway is (CUQ_PROXY_URL); it holds no trader credentials.
 #
 # Both run in the foreground; Ctrl-C stops both. See DEV_TESTING.md for the
 # full end-to-end setup (gateway + credentials + placing a test order).
@@ -45,19 +49,24 @@ command -v git >/dev/null || die "git not found. uv needs it to install proxy-cl
 # --- preflight: backend/.env --------------------------------------------------
 if [ ! -f "$BACKEND/.env" ]; then
   cp "$BACKEND/.env.example" "$BACKEND/.env"
-  die "created backend/.env from the template — open it and fill in the five
-  CUQ_PROXY_* values from your operator credential, then re-run this script."
+  die "created backend/.env from the template — open it and set CUQ_PROXY_URL to
+  your gateway's URL, then re-run this script."
 fi
 
-missing=""
-for v in CUQ_PROXY_URL CUQ_PROXY_API_KEY CUQ_PROXY_SECRET CUQ_PROXY_OPERATOR_ID CUQ_PROXY_OPERATOR_NAME; do
-  val="$(grep -E "^${v}=" "$BACKEND/.env" | head -1 | cut -d= -f2-)"
-  tmpl="$(grep -E "^${v}=" "$BACKEND/.env.example" | head -1 | cut -d= -f2-)"
-  # blank, or still the placeholder from .env.example
-  if [ -z "$val" ] || [ "$val" = "$tmpl" ]; then missing="$missing $v"; fi
+val="$(grep -E "^CUQ_PROXY_URL=" "$BACKEND/.env" | head -1 | cut -d= -f2-)"
+tmpl="$(grep -E "^CUQ_PROXY_URL=" "$BACKEND/.env.example" | head -1 | cut -d= -f2-)"
+if [ -z "$val" ] || [ "$val" = "$tmpl" ]; then
+  die "backend/.env has a blank or placeholder CUQ_PROXY_URL. Set it to your gateway's URL."
+fi
+
+# Credentials used to live in backend/.env. They're no longer read; say so,
+# since a secret sitting in a file it doesn't need to be in is worth removing.
+stale=""
+for v in CUQ_PROXY_API_KEY CUQ_PROXY_SECRET CUQ_PROXY_OPERATOR_ID CUQ_PROXY_OPERATOR_NAME; do
+  grep -qE "^${v}=." "$BACKEND/.env" && stale="$stale $v"
 done
-[ -z "$missing" ] || die "backend/.env still has blank or placeholder values for:$missing
-  Fill them in from your operator credential (see README → \"Get your credentials\")."
+[ -z "$stale" ] || warn "backend/.env still sets$stale — no longer read (you sign in
+  in the browser now). Delete those lines."
 
 GW="$(grep -E '^CUQ_PROXY_URL=' "$BACKEND/.env" | head -1 | cut -d= -f2- | tr -d '"'"'"' \r')"
 if curl -fsS -m 3 "$GW/healthz" >/dev/null 2>&1; then
@@ -117,12 +126,16 @@ cleanup() {
 trap cleanup EXIT INT TERM HUP
 
 log "backend  -> http://127.0.0.1:$BACKEND_PORT   (routes OKX through $GW)"
-( cd "$BACKEND" && exec uv run uvicorn app:app --reload --port "$BACKEND_PORT" ) </dev/null &
+# Plain-http dev: the session cookie can't be Secure here.
+( cd "$BACKEND" && TERMINAL_COOKIE_SECURE=false \
+    exec uv run uvicorn app:app --reload --host 127.0.0.1 --port "$BACKEND_PORT" ) &
 backend_pid=$!
 
-log "frontend -> http://127.0.0.1:$FRONTEND_PORT"
-( cd "$FRONTEND" && VITE_API_URL="http://localhost:$BACKEND_PORT" \
-    exec npm run dev -- --port "$FRONTEND_PORT" --strictPort ) </dev/null &
+log "frontend -> http://localhost:$FRONTEND_PORT   (open this, then sign in)"
+# The browser talks to the backend same-origin through Vite's /api proxy, as
+# it does through Caddy in production, so the session cookie behaves the same.
+( cd "$FRONTEND" && BACKEND_URL="http://127.0.0.1:$BACKEND_PORT" \
+    exec npm run dev -- --port "$FRONTEND_PORT" --strictPort ) &
 frontend_pid=$!
 
 log "both running (backend $backend_pid, frontend $frontend_pid) — Ctrl-C to stop both"

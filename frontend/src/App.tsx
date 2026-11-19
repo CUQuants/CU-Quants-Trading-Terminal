@@ -13,8 +13,12 @@ import { TradesView } from "./components/TradesView";
 import { AccountView } from "./components/AccountView";
 import { ReportingView } from "./components/ReportingView";
 import { PnlView } from "./components/PnlView";
+import { LoginPage } from "./components/LoginPage";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
-function App() {
+/** Everything behind sign-in. Mounted only once there is a session, so no
+ *  backend request or order-event socket is opened for an anonymous visitor. */
+function Terminal() {
   const { config, addPair, removePair } = useRowConfig();
   const [currentView, setCurrentView] = useState<View>("dashboard");
 
@@ -69,6 +73,23 @@ function App() {
         </OkxWsProvider>
       </KrakenWsProvider>
     </OrderEventsProvider>
+  );
+}
+
+function AuthGate() {
+  const { status } = useAuth();
+  if (status === "loading") {
+    return <div className="min-h-screen bg-black" aria-busy="true" />;
+  }
+  if (status === "anon") return <LoginPage />;
+  return <Terminal />;
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }
 

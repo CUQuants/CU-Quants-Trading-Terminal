@@ -1,37 +1,38 @@
 from typing import Dict, List
 
-from dotenv import load_dotenv
-
 from exchange_services.exchange import ExchangeService
 from exchange_services.okx_service import OkxService
 from exchange_services.kraken_service import KrakenService
 from exchange_services.proxy_session import ProxySession
-from exchange_services.reporting_session import ProxyConfigError, ReportingSession
-
-load_dotenv()
+from exchange_services.reporting_session import ReportingSession
 
 
 class ServiceContainer:
+    """One signed-in trader's services.
 
-    def __init__(self):
+    Built by `routes/auth.py` at sign-in, from the trader's own gateway
+    credential, and owned by that trader's `auth.sessions.UserSession`. There
+    is no process-wide container any more: every request the terminal makes
+    is signed as, and attributed in the gateway's audit log to, the trader
+    who made it.
+    """
+
+    def __init__(self, proxy: ProxySession, reporting: ReportingSession | None = None):
         self.services: Dict[str, ExchangeService] = {}
         self.available_services: List[str] = ["okx", "kraken"]
-        # One credential for the whole process. OKX and Kraken (the club's
-        # Prime account, as gateway exchange `kraken_prime`) both ride it.
-        self._proxy = ProxySession.from_env()
+        # OKX and Kraken (the club's Prime account, as gateway exchange
+        # `kraken_prime`) both ride this one trader's credential.
+        self._proxy = proxy
         # Optional: the audit-reporting API is a separate service that may
-        # not be stood up yet on every deployment. Unlike ProxySession, its
-        # absence must not stop the terminal from trading — routes/reporting.py
-        # returns 503 when this is None instead.
-        try:
-            self.reporting: ReportingSession | None = ReportingSession.from_env()
-        except ProxyConfigError:
-            self.reporting = None
+        # not be stood up yet on every deployment. Its absence must not stop
+        # the terminal from trading — routes/reporting.py returns 503 when
+        # this is None instead.
+        self.reporting = reporting
 
     @property
     def proxy(self) -> ProxySession:
-        """The process's one gateway session (for calls that aren't an
-        exchange service's, like PnL)."""
+        """This trader's gateway session (for calls that aren't an exchange
+        service's, like PnL)."""
         return self._proxy
 
     def get_service(self, service_name: str) -> ExchangeService:
@@ -52,7 +53,7 @@ class ServiceContainer:
 
     async def aclose(self) -> None:
         """Release the Proxy (and reporting, if configured) session's
-        connection pools. Called from the app's lifespan teardown."""
+        connection pools. Called when the trader's session ends."""
         await self._proxy.aclose()
         if self.reporting is not None:
             await self.reporting.aclose()

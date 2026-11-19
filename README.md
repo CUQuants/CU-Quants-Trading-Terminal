@@ -6,7 +6,38 @@ Trading Gateway, so the terminal itself holds no exchange keys.
 
 ---
 
-## Getting started (traders)
+## Signing in
+
+Whether you use the hosted terminal or run it yourself, you sign in the same
+way. The first page asks for your **CU Quants gateway credential**: the four
+`proxy:` values already in your xlrts `config.yaml`.
+
+| On the sign-in page | In `speedbyte/xlrts/config.yaml` |
+|---|---|
+| API key | `proxy.api_key` (`cuq_op_...`) |
+| API secret | `proxy.api_secret` |
+| Operator ID | `proxy.operator_id` (e.g. `cuq-016`) |
+| Operator name | `proxy.operator_name` |
+
+- **What the terminal checks.** It verifies the API key, the secret, and that
+  the operator ID owns that key, using one signed call to the gateway (the same
+  check xlrts makes at startup). The operator name isn't checked; it is
+  recorded as you type it.
+- **Where your secret goes.** The terminal server keeps it in memory only, for
+  as long as you're signed in. It is never written to disk and never stored in
+  your browser. The browser remembers the other three fields so you don't
+  retype them.
+- **Attribution.** Every order and request the terminal sends is signed with,
+  and attributed in the gateway's audit log to, *your* credential.
+- **When you get signed out.** After 12 hours idle or 24 hours at most, when
+  you click **Sign out**, or whenever the terminal server restarts.
+
+**Hosted:** https://terminal.178-105-55-5.sslip.io (see
+[deploy/README.md](./deploy/README.md)).
+
+---
+
+## Getting started (running it yourself)
 
 About 10 minutes, once you have your credentials. These steps assume macOS or
 Linux. On Windows, run everything inside [WSL](https://learn.microsoft.com/windows/wsl/install).
@@ -57,16 +88,13 @@ backend's dependencies are installed. It's pinned to a commit in
 
 ### 3. Get your credentials
 
-Ask the club liaison, or whoever runs the gateway, for an **operator
-credential**. You'll get five values:
+You need an **operator credential** for the gateway. If you use xlrts, you
+already have one: the `proxy:` section of your `config.yaml`. If you don't,
+ask the club liaison or whoever runs the gateway.
 
-| Put this in `backend/.env` | What it is |
-|---|---|
-| `CUQ_PROXY_URL` | The gateway's URL |
-| `CUQ_PROXY_API_KEY` | Your operator API key (`cuq_op_...`) |
-| `CUQ_PROXY_SECRET` | The secret paired with that key |
-| `CUQ_PROXY_OPERATOR_ID` | Your operator id, e.g. `cuq-014` |
-| `CUQ_PROXY_OPERATOR_NAME` | Your name, shown in the audit log |
+`backend/.env` holds only **where the gateway is** (`CUQ_PROXY_URL`, which is
+the `proxy.url` in your xlrts config). Your four credential values go into the
+sign-in page, not into any file.
 
 ### 4. Run it
 
@@ -75,12 +103,11 @@ scripts/dev-local.sh
 ```
 
 On the first run the script creates `backend/.env` from the template and stops.
-Open `backend/.env`, paste in the five values from step 3, and run the script
-again.
+Open `backend/.env`, set `CUQ_PROXY_URL`, and run the script again.
 
 From then on it checks your setup, installs dependencies (this takes a minute
 the first time), and starts everything. Open the dashboard at
-**http://localhost:5173**.
+**http://localhost:5173** and sign in (see [Signing in](#signing-in)).
 
 Press **Ctrl-C** to stop. To update later, run `git pull` and then the script
 again.
@@ -97,7 +124,9 @@ that fixes it. Other common issues:
 | `command not found` right after installing something | Open a new terminal window. |
 | `--strictPort` / port in use | Something is already on 5173 or 8000. Close it, or run `FRONTEND_PORT=5174 BACKEND_PORT=8001 scripts/dev-local.sh`. |
 | Reporting tab says "not configured" | Expected. It's optional; see [TRADER_GUIDE.md](./TRADER_GUIDE.md#audit-reporting-optional). |
-| `401` / auth errors in the backend log | A credential value is wrong or has extra spaces. Re-copy it into `backend/.env`. |
+| Sign-in says "did not accept these credentials" | The API key, secret or operator ID is wrong. Re-copy them from your xlrts `config.yaml`. The gateway gives the same answer for all three, and also for a computer clock that is more than 5 s off. |
+| Sign-in says "Too many failed sign-ins" | Wait out the countdown. The terminal limits failed attempts so one mistyped secret can't lock everyone out at the gateway. |
+| Sent back to the sign-in page | Your session ended (idle, expired, signed out, or the server restarted). Sign in again. |
 
 More detail (all environment variables, Kraken limitations, simulated vs. live
 trading) is in [TRADER_GUIDE.md](./TRADER_GUIDE.md).
@@ -127,12 +156,17 @@ BACKEND_PORT=9000 FRONTEND_PORT=5000 scripts/dev-local.sh
 Running the two halves by hand, without the script:
 
 ```bash
-cd backend  && uv sync && uv run uvicorn app:app --reload --port 8000
-cd frontend && npm install && npm run dev            # http://localhost:5173
+cd backend  && uv sync && TERMINAL_COOKIE_SECURE=false uv run uvicorn app:app --reload --port 8000
+cd frontend && npm install && npm run dev            # http://localhost:5173, proxies /api -> :8000
 ```
 
-Docker also works: `docker compose up --build` (backend on :8000, dashboard on
-:3000).
+The browser always reaches the backend same-origin under `/api`: through Vite's
+proxy in dev, and through Caddy in production. That is what lets the HttpOnly
+session cookie work. Open the dashboard on the Vite port, not on :8000.
+
+Docker also works: `docker compose up --build` (dashboard on :3000).
+
+Deploying to the gateway's box: [deploy/README.md](./deploy/README.md).
 
 ### Working on proxy-client itself
 
