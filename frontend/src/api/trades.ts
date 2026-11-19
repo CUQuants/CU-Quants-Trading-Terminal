@@ -1,7 +1,6 @@
 import type { Exchange } from "../types/orderbook";
 import type { TradesPage } from "../types/trades";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { apiFetch } from "./client";
 
 /**
  * One page of fills for an exchange, newest first. Pass the returned
@@ -16,7 +15,7 @@ export async function fetchTrades(
   if (pair) params.set("pair", pair);
   if (offset) params.set("offset", String(offset));
 
-  const res = await fetch(`${API_BASE}/trades/${exchange}?${params}`);
+  const res = await apiFetch(`/trades/${exchange}?${params}`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(body || `Request failed: ${res.status}`);

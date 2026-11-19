@@ -27,6 +27,7 @@ from proxy_client.errors import (
     ProxyError,
 )
 
+from auth import current_container
 from routes.reporting import router
 
 
@@ -74,7 +75,7 @@ class FakeContainer:
 def make_client(reporting) -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    app.state.service_container = FakeContainer(reporting)
+    app.dependency_overrides[current_container] = lambda: FakeContainer(reporting)
     return TestClient(app)
 
 

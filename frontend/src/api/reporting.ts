@@ -5,29 +5,19 @@ import type {
   LogPage,
   UnresolvedOrder,
 } from "../types/reporting";
-import { ApiError } from "./orders";
+import { request } from "./client";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
-async function request<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new ApiError(body || `Request failed: ${res.status}`, res.status);
-  }
-  return res.json() as Promise<T>;
-}
 
 export function fetchLogHealth(): Promise<LogHealth> {
-  return request(`${API_BASE}/reporting/health`);
+  return request(`/reporting/health`);
 }
 
 export function fetchUnresolvedOrders(): Promise<UnresolvedOrder[]> {
-  return request(`${API_BASE}/reporting/unresolved`);
+  return request(`/reporting/unresolved`);
 }
 
 export function fetchAuthFailures(): Promise<AuthFailure[]> {
-  return request(`${API_BASE}/reporting/auth-failures`);
+  return request(`/reporting/auth-failures`);
 }
 
 export function fetchLogs(filters: LogFilters): Promise<LogPage> {
@@ -38,5 +28,5 @@ export function fetchLogs(filters: LogFilters): Promise<LogPage> {
     }
   }
   const qs = params.toString();
-  return request(`${API_BASE}/reporting/logs${qs ? `?${qs}` : ""}`);
+  return request(`/reporting/logs${qs ? `?${qs}` : ""}`);
 }

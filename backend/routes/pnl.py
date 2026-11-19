@@ -1,20 +1,26 @@
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from proxy_client.errors import ProxyError
+
+from auth import current_container
+from exchange_services.service_container import ServiceContainer
 
 router = APIRouter(prefix="/pnl", tags=["pnl"])
 
 
 @router.get("")
-async def get_pnl(request: Request, group_by: str = Query(default="pair")) -> Dict[str, Any]:
+async def get_pnl(
+    group_by: str = Query(default="pair"),
+    container: ServiceContainer = Depends(current_container),
+) -> Dict[str, Any]:
     """The club's PnL report from RMU Core, via the gateway's `POST /v1/rmu/pnl`.
 
     Returned unchanged (decimal values stay strings), so the terminal shows
     exactly the RMU's numbers.
     """
-    proxy = request.app.state.service_container.proxy
+    proxy = container.proxy
     try:
         return await proxy.get_pnl(group_by=group_by)
     except ProxyError as exc:

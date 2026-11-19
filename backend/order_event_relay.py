@@ -25,7 +25,9 @@ order_logger.addHandler(_handler)
 
 
 class OrderEventRelay:
-    """Bridges exchange private WebSocket streams to frontend clients.
+    """Bridges one signed-in trader's private exchange streams to their
+    browser tabs. Each `auth.sessions.UserSession` owns one, so events never
+    cross between traders.
 
     - Maintains a registry of connected frontend WebSocket clients per exchange.
     - Reference-counted: opens an exchange's private WS on first client,
@@ -35,8 +37,10 @@ class OrderEventRelay:
     - Status events (connected / reconnecting / disconnected) are also relayed.
     """
 
-    def __init__(self, service_container: ServiceContainer):
+    def __init__(self, service_container: ServiceContainer, label: str = ""):
         self._service_container = service_container
+        # Who these events belong to (the operator_id), for the event log.
+        self._label = label or "-"
         self._clients: Dict[str, Set[WebSocket]] = {}
         self._event_queues: Dict[str, asyncio.Queue] = {}
         self._fan_out_tasks: Dict[str, asyncio.Task] = {}
@@ -83,7 +87,7 @@ class OrderEventRelay:
         self._fan_out_tasks[exchange] = asyncio.create_task(
             self._fan_out_loop(exchange, queue)
         )
-        logger.info("Started order event stream for exchange: %s", exchange)
+        logger.info("Started order event stream for %s on %s", self._label, exchange)
 
     async def _stop_exchange_stream(self, exchange: str) -> None:
         task = self._fan_out_tasks.pop(exchange, None)
@@ -97,7 +101,7 @@ class OrderEventRelay:
         service = self._service_container.get_service(exchange)
         await service.stop_order_stream()
         self._event_queues.pop(exchange, None)
-        logger.info("Stopped order event stream for exchange: %s", exchange)
+        logger.info("Stopped order event stream for %s on %s", self._label, exchange)
 
     # ------------------------------------------------------------------
     # Fan-out: read from queue, broadcast to all clients for that exchange
@@ -108,7 +112,7 @@ class OrderEventRelay:
             while True:
                 event = await queue.get()
                 message = json.dumps(event)
-                order_logger.info("[%s] %s", exchange, message)
+                order_logger.info("[%s] [%s] %s", self._label, exchange, message)
 
                 clients = self._clients.get(exchange, set()).copy()
                 stale: list[WebSocket] = []
@@ -126,11 +130,18 @@ class OrderEventRelay:
             pass
 
     # ------------------------------------------------------------------
-    # Shutdown (called from app lifespan teardown)
+    # Shutdown (called when the trader's session ends)
     # ------------------------------------------------------------------
 
     async def shutdown(self) -> None:
         for exchange in list(self._fan_out_tasks.keys()):
             await self._stop_exchange_stream(exchange)
+        for clients in self._clients.values():
+            for ws in list(clients):
+                try:
+                    if ws.client_state == WebSocketState.CONNECTED:
+                        await ws.close(code=4401)
+                except Exception:
+                    pass
         self._clients.clear()
-        logger.info("OrderEventRelay shut down")
+        logger.info("OrderEventRelay shut down for %s", self._label)

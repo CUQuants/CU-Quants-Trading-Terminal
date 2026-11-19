@@ -5,25 +5,15 @@ import type {
   AllBalances,
   AllPositions,
 } from "../types/account";
-import { ApiError } from "./orders";
+import { request } from "./client";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
-async function request<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new ApiError(body || `Request failed: ${res.status}`, res.status);
-  }
-  return res.json() as Promise<T>;
-}
 
 export function fetchAvailableCash(
   exchange: Exchange,
   pair: string,
 ): Promise<AvailableCash> {
   return request(
-    `${API_BASE}/account/cash/${exchange}?pair=${encodeURIComponent(pair)}`,
+    `/account/cash/${exchange}?pair=${encodeURIComponent(pair)}`,
   );
 }
 
@@ -32,14 +22,14 @@ export function fetchAvailablePositions(
   pair: string,
 ): Promise<AvailablePosition> {
   return request(
-    `${API_BASE}/account/positions/${exchange}?pair=${encodeURIComponent(pair)}`,
+    `/account/positions/${exchange}?pair=${encodeURIComponent(pair)}`,
   );
 }
 
 export function fetchAllBalances(exchange: Exchange): Promise<AllBalances> {
-  return request(`${API_BASE}/account/balances/${exchange}`);
+  return request(`/account/balances/${exchange}`);
 }
 
 export function fetchAllPositions(exchange: Exchange): Promise<AllPositions> {
-  return request(`${API_BASE}/account/positions/${exchange}`);
+  return request(`/account/positions/${exchange}`);
 }

@@ -1,0 +1,78 @@
+# CU Quants Trading Terminal — public TLS endpoint.
+#
+# APPEND this block to /etc/caddy/Caddyfile on 178.105.55.5. Do not edit the
+# gateway's existing `178-105-55-5.sslip.io { ... }` block: the terminal gets
+# its own hostname so it can never shadow or rewrite the gateway's signed
+# /v1/* paths (a rewritten path is a uniform 401 for every gateway client).
+#
+# sslip.io resolves any prefixed name too, so terminal.178-105-55-5.sslip.io
+# already points at this box. No DNS to set up.
+#
+#   /api/*  -> the terminal backend on 127.0.0.1:8100 (prefix stripped;
+#              WebSocket upgrades for /api/orders/{exchange} pass through)
+#   else    -> the built SPA in /srv/cuq-terminal/frontend
+#
+# FIRST BRING-UP: keep the staging CA line below uncommented until the site
+# answers correctly, exactly as trading-gateway/deploy/Caddyfile asks. Let's
+# Encrypt production allows 5 certificates per hostname set per 7 days.
+# Validate as the caddy user, never root:
+#     sudo -u caddy caddy validate --config /etc/caddy/Caddyfile
+# Then comment out the staging line, delete the staging cert from
+# /var/lib/caddy/.local/share/caddy/certificates/ and restart Caddy (a reload
+# keeps the staging cert).
+
+terminal.178-105-55-5.sslip.io {
+	tls {
+		ca https://acme-staging-v02.api.letsencrypt.org/directory
+	}
+
+	encode zstd gzip
+
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8100 {
+			# Exactly one client address, which the backend's failed-login
+			# throttle keys on (uvicorn --proxy-headers trusts 127.0.0.1).
+			# Caddy passes the client's Host through unchanged, which the
+			# backend's same-origin check relies on.
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	handle {
+		root * /srv/cuq-terminal/frontend
+		# Hashed build assets can be cached forever; index.html never.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@html not path /assets/*
+		header @html Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output file /var/log/caddy/terminal.log {
+			roll_size 20mb
+			roll_keep 10
+			roll_keep_for 720h
+			mode 640
+		}
+		# The session cookie is a bearer credential: never write it to disk.
+		format filter {
+			wrap json
+			request>headers>Cookie delete
+			request>headers>Authorization delete
+			resp_headers>Set-Cookie delete
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		# The browser talks to this origin (REST + order-event WS) and, for
+		# public order books only, straight to the exchanges' public feeds.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://ws.kraken.com wss://wsus.okx.com:8443 wss://wsuspap.okx.com:8443 wss://ws.gemini.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		-Server
+	}
+}

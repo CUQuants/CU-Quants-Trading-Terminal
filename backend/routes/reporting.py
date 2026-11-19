@@ -1,8 +1,11 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from proxy_client.errors import ProxyError
+
+from auth import current_container
+from exchange_services.service_container import ServiceContainer
 from models import (
     AuthFailureResponse,
     LogHealthResponse,
@@ -23,8 +26,8 @@ _STATUS_BY_CODE = {
 }
 
 
-def _reporting(request: Request):
-    reporting = request.app.state.service_container.reporting
+def _reporting(container: ServiceContainer = Depends(current_container)):
+    reporting = container.reporting
     if reporting is None:
         raise HTTPException(
             status_code=503,
@@ -38,9 +41,8 @@ def _reraise_as_http(exc: ProxyError):
 
 
 @router.get("/health", response_model=LogHealthResponse)
-async def get_log_health(request: Request):
+async def get_log_health(reporting=Depends(_reporting)):
     """Partition runway, clock skew, default-partition drift."""
-    reporting = _reporting(request)
     try:
         return await reporting.log_health()
     except ProxyError as e:
@@ -48,9 +50,8 @@ async def get_log_health(request: Request):
 
 
 @router.get("/unresolved", response_model=List[UnresolvedOrderResponse])
-async def get_unresolved_orders(request: Request):
+async def get_unresolved_orders(reporting=Depends(_reporting)):
     """Orders forwarded to an exchange whose outcome was never recorded."""
-    reporting = _reporting(request)
     try:
         return await reporting.unresolved_orders()
     except ProxyError as e:
@@ -58,9 +59,8 @@ async def get_unresolved_orders(request: Request):
 
 
 @router.get("/auth-failures", response_model=List[AuthFailureResponse])
-async def get_auth_failures(request: Request):
+async def get_auth_failures(reporting=Depends(_reporting)):
     """Authentication failures in the last 7 days, by key and origin."""
-    reporting = _reporting(request)
     try:
         return await reporting.auth_failures()
     except ProxyError as e:
@@ -69,7 +69,7 @@ async def get_auth_failures(request: Request):
 
 @router.get("/logs", response_model=LogPageResponse)
 async def get_logs(
-    request: Request,
+    reporting=Depends(_reporting),
     since: Optional[str] = Query(default=None),
     until: Optional[str] = Query(default=None),
     operator_id: Optional[str] = Query(default=None),
@@ -85,7 +85,6 @@ async def get_logs(
     cursor: Optional[str] = Query(default=None),
 ):
     """Filtered, paginated browse over request_log."""
-    reporting = _reporting(request)
     try:
         return await reporting.query_logs(
             since=since,

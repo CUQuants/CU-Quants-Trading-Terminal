@@ -13,16 +13,17 @@ order-event WebSocket (`exchange_services/okx_order_stream.py`) delegates to
 one signing / handshake / error-classification implementation in play, not
 one per consumer.
 
-Credential type: **operator**. The terminal authenticates as a person
-(whoever the deployment's `CUQ_PROXY_OPERATOR_*` names), so it must *not*
+Credential type: **operator**. Each trader signs in to the terminal with
+their own gateway operator credential (the four `proxy:` values from their
+xlrts config.yaml), and gets their own `ProxySession` — built in
+`routes/auth.py`, owned by their `auth.sessions.UserSession`. It must *not*
 send `system_name` — `ProxyClient.for_operator` / `for_operator` is used, and
-there is no `system_name` field here to get wrong. Every request the
-terminal makes is attributed to that one operator in the audit log; that is
-a deliberate continuation of how the terminal held one key set before.
+there is no `system_name` field here to get wrong. Every request is thereby
+attributed in the gateway's audit log to the trader who made it.
 
 Simulated vs. live is **not** a terminal setting any more. Whether an order
 reaches OKX's demo environment or the real one is decided by `OKX_SIMULATED`
-on the gateway this session points at (`CUQ_PROXY_URL`), with demo
+on the gateway the terminal points at (`CUQ_PROXY_URL`), with demo
 credentials vaulted there. To test against OKX's simulated environment,
 point `CUQ_PROXY_URL` at a gateway running in that mode.
 """
@@ -30,7 +31,6 @@ point `CUQ_PROXY_URL` at a gateway running in that mode.
 from __future__ import annotations
 
 import json
-import os
 import time
 import uuid
 from typing import Any
@@ -45,21 +45,18 @@ __all__ = ["ProxySession", "ProxyConfigError", "ProxyError"]
 
 
 class ProxyConfigError(RuntimeError):
-    """Raised when the environment is missing what a ProxySession needs.
-
-    Names every missing variable at once, because discovering them one
-    failed startup at a time is a bad way to spend a morning.
-    """
+    """Raised when the server is missing configuration it needs."""
 
 
 class ProxySession:
-    """The terminal's authenticated session against the Proxy.
+    """One signed-in trader's authenticated session against the Proxy.
 
-    One instance is built at startup in `ServiceContainer` and handed to
-    every service that needs to reach OKX. There is deliberately no second
-    construction site: a component that could build its own session could be
-    given its own credential, and the audit story depends on there being
-    exactly one identity per process.
+    Built only at sign-in (`routes/auth.py`), from that trader's own
+    credential, and handed to every service in their `ServiceContainer`.
+    There is deliberately no other construction site: a component that could
+    build its own session could be given someone else's credential, and the
+    audit story depends on each request carrying the identity of the trader
+    who made it.
     """
 
     #: How long to wait on a single Proxy call. The Proxy's own upstream
@@ -82,7 +79,7 @@ class ProxySession:
         ws_url: str = "",
     ) -> None:
         self._base = base_url.rstrip("/")
-        # An explicit wss:// base (from CUQ_PROXY_WS_URL), or "" to let the
+        # An explicit wss:// base (server's CUQ_PROXY_WS_URL), or "" to let the
         # SDK derive it from base_url. Kept so a deployment cannot end up
         # with the REST and WS bases pointing at different hosts.
         self._ws_url = (ws_url or "").rstrip("/")
@@ -101,40 +98,6 @@ class ProxySession:
         return f"<ProxySession {self.operator_id} via {self._base}>"
 
     __str__ = __repr__
-
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def from_env(cls, timeout: float = DEFAULT_TIMEOUT) -> "ProxySession":
-        """Build from the environment. The only place the secret is read."""
-        required = {
-            "CUQ_PROXY_URL": os.getenv("CUQ_PROXY_URL", ""),
-            "CUQ_PROXY_API_KEY": os.getenv("CUQ_PROXY_API_KEY", ""),
-            "CUQ_PROXY_SECRET": os.getenv("CUQ_PROXY_SECRET", ""),
-            "CUQ_PROXY_OPERATOR_ID": os.getenv("CUQ_PROXY_OPERATOR_ID", ""),
-            "CUQ_PROXY_OPERATOR_NAME": os.getenv("CUQ_PROXY_OPERATOR_NAME", ""),
-        }
-        missing = sorted(name for name, value in required.items() if not value.strip())
-        if missing:
-            raise ProxyConfigError(
-                "The trading terminal reaches OKX only through the CU Quants "
-                f"Proxy and cannot start without: {', '.join(missing)}. Ask the "
-                "club liaison for an operator credential (see trading-gateway's "
-                "NEW-USER.md)."
-            )
-        return cls(
-            base_url=required["CUQ_PROXY_URL"].strip(),
-            api_key=required["CUQ_PROXY_API_KEY"].strip(),
-            secret=required["CUQ_PROXY_SECRET"].strip(),
-            operator_id=required["CUQ_PROXY_OPERATOR_ID"].strip(),
-            operator_name=required["CUQ_PROXY_OPERATOR_NAME"].strip(),
-            timeout=timeout,
-            # Normally empty, so the WebSocket base is derived from the REST
-            # URL and the two cannot drift apart.
-            ws_url=os.getenv("CUQ_PROXY_WS_URL", "").strip(),
-        )
 
     # ------------------------------------------------------------------
     # The one network call
@@ -218,8 +181,8 @@ class ProxySession:
         return parsed
 
     async def aclose(self) -> None:
-        """Close the underlying HTTP connection pools. Called from the app's
-        lifespan teardown."""
+        """Close the underlying HTTP connection pools. Called when the
+        trader's session ends."""
         await self._client.aclose()
         self._client.close()
         await self._http.aclose()
@@ -249,6 +212,6 @@ class ProxySession:
 
     @property
     def ws_url_override(self) -> str:
-        """An explicit `wss://` base from `CUQ_PROXY_WS_URL`, or `""` to
+        """An explicit `wss://` base (server's `CUQ_PROXY_WS_URL`), or `""` to
         derive it from `base_url`."""
         return self._ws_url
