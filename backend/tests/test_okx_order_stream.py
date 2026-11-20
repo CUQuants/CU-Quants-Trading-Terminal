@@ -126,3 +126,23 @@ async def test_unknown_order_state_is_dropped():
                 await asyncio.wait_for(queue.get(), timeout=0.5)
         finally:
             await stream.stop()
+
+
+@pytest.mark.asyncio
+async def test_connected_precedes_an_order_that_beats_subscribe_returning():
+    """Regression: the SDK dispatches frames on its own task, so an order can
+    reach `_on_orders` before `_run` gets back from `subscribe()`. The queue
+    must still read "connected" first (this raced on CI before the fix)."""
+    stream = OkxOrderEventStream(proxy=FakeProxySession("http://unused"))
+    queue: asyncio.Queue = asyncio.Queue()
+    stream._queue = queue
+
+    await stream._on_orders({"data": [
+        {"instId": "BTC-USDT", "ordId": "A", "state": "live", "px": "1", "sz": "1"},
+        {"instId": "BTC-USDT", "ordId": "B", "state": "live", "px": "1", "sz": "1"},
+    ]})
+    await stream._announce_connected()  # what `_run` does once subscribe() returns
+
+    events = [queue.get_nowait() for _ in range(queue.qsize())]
+    assert [e["type"] for e in events] == ["status", "order_event", "order_event"]
+    assert events[0]["connectionStatus"] == "connected"

@@ -61,6 +61,9 @@ class OkxOrderEventStream:
         self._queue: Optional[asyncio.Queue] = None
         self._task: Optional[asyncio.Task] = None
         self._running = False
+        # The last status event emitted, so "connected" always precedes the
+        # first order event (see `_on_orders`).
+        self._last_status: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -144,18 +147,16 @@ class OkxOrderEventStream:
         # Connected. The SDK's supervisor owns reconnects and subscription
         # replay from here; we only surface up/down transitions.
         logger.info("OKX proxy WS connected and subscribed to orders")
-        await self._emit_status("connected")
+        await self._announce_connected()
 
-        was_up = True
         while self._running:
             try:
                 await asyncio.sleep(_STATUS_POLL_INTERVAL_S)
             except asyncio.CancelledError:
                 return
             up = self._ws.is_connected
-            if up != was_up:
+            if up != (self._last_status == "connected"):
                 await self._emit_status("connected" if up else "reconnecting")
-                was_up = up
 
     # ------------------------------------------------------------------
     # Frame handling
@@ -170,6 +171,13 @@ class OkxOrderEventStream:
         for item in msg.get("data", []):
             event = self._normalize_order_event(item)
             if event:
+                # The SDK dispatches frames on its own reader task, so an
+                # order pushed right after the subscribe ack can arrive
+                # before `_run` resumes from `subscribe()` and says
+                # "connected". An order is proof of a live connection:
+                # announce it first, so the dashboard never shows an order
+                # under a "reconnecting" indicator.
+                await self._announce_connected()
                 await self._queue.put(event)
 
     def _on_handler_error(self, exc: Exception) -> None:
@@ -197,9 +205,14 @@ class OkxOrderEventStream:
     # Status events
     # ------------------------------------------------------------------
 
+    async def _announce_connected(self) -> None:
+        if self._last_status != "connected":
+            await self._emit_status("connected")
+
     async def _emit_status(self, status: str) -> None:
         if self._queue is None:
             return
+        self._last_status = status
         await self._queue.put({
             "type": "status",
             "exchange": "okx",
