@@ -107,9 +107,10 @@ rm /tmp/cuq_terminal_gha.pub
 Back on your Mac, check that the key works and that it can't do anything else:
 
 ```bash
-K="-i ~/.ssh/cuq_terminal_gha -o IdentitiesOnly=yes -o ClearAllForwardings=yes"
-ssh $K cuqterm@178.105.55.5 status         # "[receive-deploy] current : (none)"
-ssh $K cuqterm@178.105.55.5 bash           # "refused: only 'deploy', 'rollback' or 'status'"
+ssh -i ~/.ssh/cuq_terminal_gha -o IdentitiesOnly=yes -o ClearAllForwardings=yes cuqterm@178.105.55.5 status
+# expect: [receive-deploy] current : (none)
+ssh -i ~/.ssh/cuq_terminal_gha -o IdentitiesOnly=yes -o ClearAllForwardings=yes cuqterm@178.105.55.5 bash
+# expect: [receive-deploy] error: refused: only 'deploy', 'rollback' or 'status'
 ```
 
 ### 3. Configure GitHub
