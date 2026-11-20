@@ -1,0 +1,87 @@
+name: Deploy
+
+# Manual only: Actions → Deploy → Run workflow (branch: main).
+# Every deploy restarts the backend, which signs every trader out — so it is
+# never automatic. See deploy/README.md for the one-time server/GitHub setup.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never two deploys (or a deploy and a rollback) at once; never cancel one
+# midway.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Only from main
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Refuse anything but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploys run from main only (this run is on ${GITHUB_REF})."
+          exit 1
+      - run: echo "Deploying ${GITHUB_SHA} from main"
+
+  ci:
+    needs: guard
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Deploy to production
+    needs: ci
+    runs-on: ubuntu-24.04
+    # Secrets live in this environment, which only `main` may use (set under
+    # Settings → Environments → production → Deployment branches).
+    environment:
+      name: production
+      url: ${{ vars.TERMINAL_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the release bundle
+        run: deploy/build-bundle.sh "$RUNNER_TEMP/bundle.tar.gz"
+
+      - name: Set up the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host keys: never trust-on-first-use from a CI runner.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Ship and switch
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o ClearAllForwardings=yes -o ConnectTimeout=20 \
+              "cuqterm@${DEPLOY_HOST}" deploy < "$RUNNER_TEMP/bundle.tar.gz"
+
+      - name: Check the public site serves this build
+        env:
+          TERMINAL_URL: ${{ vars.TERMINAL_URL }}
+        run: |
+          curl -fsS -m 15 "$TERMINAL_URL/api/"
+          echo
+          # The served index.html must be the one just built (hashed asset names).
+          curl -fsS -m 15 "$TERMINAL_URL/" | cmp -s - frontend/dist/index.html \
+            || { echo "::error::$TERMINAL_URL is not serving this build's index.html"; exit 1; }
+
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

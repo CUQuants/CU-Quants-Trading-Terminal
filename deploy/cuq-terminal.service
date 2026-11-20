@@ -1,34 +1,32 @@
-# CU Quants Trading Terminal backend — systemd USER unit, run as `admin`,
-# next to cuq-proxy.service and following its conventions (trading-gateway
-# PROXY.md, "On 178.105.55.5").
+# CU Quants Trading Terminal backend — systemd USER unit of the `cuqterm`
+# account (not admin: the terminal must not be able to read the gateway's
+# /srv/cuq-proxy). See deploy/README.md.
 #
-# Install (once, as admin):
-#     mkdir -p ~/.config/systemd/user
-#     cp /srv/cuq-terminal/app/deploy/cuq-terminal.service ~/.config/systemd/user/
-#     systemctl --user daemon-reload
-#     systemctl --user enable --now cuq-terminal
-# Linger is already on for admin (`loginctl enable-linger admin`), so it
-# survives logout and reboot like the gateway does.
+# You don't install this by hand: deploy/receive-deploy.sh copies it from each
+# release into ~cuqterm/.config/systemd/user/ and enables it, so the running
+# unit always matches the deployed code. `loginctl enable-linger cuqterm`
+# keeps it running without a login session and across reboots.
 
 [Unit]
 Description=CU Quants Trading Terminal backend
-# The terminal signs traders in against the gateway; start after it.
-After=cuq-proxy.service network-online.target
 Wants=network-online.target
+After=network-online.target
 # Never give up restarting (systemd's default stops after 5 starts in 10 s
 # and leaves the unit failed — a silent outage).
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-WorkingDirectory=/srv/cuq-terminal/app/backend
+# `current` is a symlink to the active release; systemd resolves it at each
+# (re)start, which is how a deploy or rollback takes effect.
+WorkingDirectory=/srv/cuq-terminal/current/backend
 EnvironmentFile=/srv/cuq-terminal/.env
 # Loopback only: Caddy terminates TLS on this host and is the only way in.
 # Exactly ONE worker: signed-in sessions (and their secrets) live in this
 # process's memory, so a second worker would not know about them.
 # --proxy-headers / --forwarded-allow-ips: believe Caddy's X-Forwarded-For
 # (and only Caddy's), so the login throttle sees the trader's real IP.
-ExecStart=/srv/cuq-terminal/app/backend/.venv/bin/uvicorn app:app \
+ExecStart=/srv/cuq-terminal/current/backend/.venv/bin/uvicorn app:app \
     --host 127.0.0.1 --port 8100 --workers 1 \
     --proxy-headers --forwarded-allow-ips 127.0.0.1 \
     --no-server-header

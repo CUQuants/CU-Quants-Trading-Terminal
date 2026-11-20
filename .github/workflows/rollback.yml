@@ -1,0 +1,52 @@
+name: Rollback
+
+# Manual only: Actions → Rollback → Run workflow (branch: main).
+# Switches the server back to the release before the current one and restarts
+# (signs every trader out). Running it twice returns to where you started.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment:
+      name: production
+      url: ${{ vars.TERMINAL_URL }}
+    steps:
+      - name: Set up the deploy key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Roll back
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              -o ClearAllForwardings=yes -o ConnectTimeout=20 \
+              "cuqterm@${DEPLOY_HOST}" rollback
+
+      - name: Check the public site
+        env:
+          TERMINAL_URL: ${{ vars.TERMINAL_URL }}
+        run: curl -fsS -m 15 "$TERMINAL_URL/api/"
+
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

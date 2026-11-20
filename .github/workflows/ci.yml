@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # The Deploy workflow runs this first and only deploys if it passes.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per PR/branch; a new push to a PR cancels its stale run. When the
+  # Deploy workflow calls this, github.workflow is "Deploy", so it never
+  # collides with (or is cancelled by) ordinary CI runs.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      # Python version comes from backend/.python-version; proxy-client is a
+      # public git dependency, so no token is needed.
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      # `build` is `tsc -b && vite build`: type errors fail CI.
+      - run: npm run build
+      # The codebase has pre-existing lint errors (react-hooks rules). Report
+      # them without failing CI; flip this to blocking once they're fixed.
+      - name: Lint (not blocking yet)
+        run: npm run lint
+        continue-on-error: true
+
+  deploy-config:
+    name: Deploy config
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell scripts parse and pass shellcheck (errors only)
+        run: |
+          for f in deploy/*.sh scripts/*.sh; do bash -n "$f"; done
+          shellcheck -S error deploy/*.sh scripts/*.sh
+      - name: Caddy site block is valid
+        run: |
+          docker run --rm -v "$PWD/deploy:/cfg:ro" caddy:2 \
+            caddy adapt --adapter caddyfile --config /cfg/Caddyfile.terminal > /dev/null
