@@ -1,5 +1,12 @@
-from pydantic import BaseModel
-from typing import Any, Literal, Optional, List
+from decimal import Decimal
+from typing import Annotated, Any, Literal, Optional, List
+
+from pydantic import BaseModel, PlainSerializer
+
+# A fill amount exactly as the exchange reported it. Serialized as a plain
+# decimal string ("0.00000010", never "1.0E-7" or a float) so the frontend can
+# show the exchange's digits with no float rounding.
+ExactDecimal = Annotated[Decimal, PlainSerializer(lambda d: format(d, "f"), return_type=str)]
 
 
 class PlaceOrderRequest(BaseModel):
@@ -30,9 +37,11 @@ class TradeResponse(BaseModel):
     pair: str
     exchange: str
     side: Literal["buy", "sell"]
-    price: float
-    size: float
-    fee: float
+    price: ExactDecimal
+    size: ExactDecimal
+    # price * size; Kraken's own `cost` where it gives one.
+    notional: ExactDecimal
+    fee: ExactDecimal
     fee_currency: str
     role: Literal["maker", "taker"]
     timestamp: str

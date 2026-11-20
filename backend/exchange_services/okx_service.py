@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from decimal import Decimal
 from typing import Dict, List, Optional
 
 from proxy_client import new_idempotency_key
@@ -170,15 +171,18 @@ class OkxService(ExchangeService):
         trades: List[TradeResponse] = []
         for item in data.get("data", []):
             exec_type = item.get("execType", "")
+            price = Decimal(item["fillPx"])
+            size = Decimal(item["fillSz"])
             trades.append(TradeResponse(
                 id=item["tradeId"],
                 order_id=item["ordId"],
                 pair=self._from_native_pair(item["instId"]),
                 exchange="okx",
                 side=item["side"],
-                price=float(item["fillPx"]),
-                size=float(item["fillSz"]),
-                fee=abs(float(item.get("fee") or 0)),
+                price=price,
+                size=size,
+                notional=price * size,
+                fee=abs(Decimal(item.get("fee") or "0")),
                 fee_currency=item.get("feeCcy", ""),
                 role="maker" if exec_type == "M" else "taker",
                 timestamp=item.get("fillTime", item.get("ts", "")),

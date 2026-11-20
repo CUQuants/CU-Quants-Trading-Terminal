@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import type { Exchange } from "../types/orderbook";
-import type { Trade } from "../types/trades";
 import { formatNum, capitalize } from "../utils/format";
 import { useTrades } from "../hooks/useTrades";
 import { FilterToggle } from "./ui/FilterToggle";
@@ -18,9 +17,8 @@ interface Props {
   activeExchanges: Exchange[];
 }
 
-function notional(t: Trade) {
-  return t.price * t.size;
-}
+// Sorting and the summary totals only; the table shows the exact strings.
+const num = (s: string) => Number(s);
 
 export function TradesView({ activeExchanges }: Props) {
   const {
@@ -66,11 +64,9 @@ export function TradesView({ activeExchanges }: Props) {
           break;
         case "price":
         case "size":
-        case "fee":
-          cmp = a[sortKey] - b[sortKey];
-          break;
         case "notional":
-          cmp = notional(a) - notional(b);
+        case "fee":
+          cmp = num(a[sortKey]) - num(b[sortKey]);
           break;
         default:
           cmp = String(a[sortKey]).localeCompare(String(b[sortKey]));
@@ -81,8 +77,8 @@ export function TradesView({ activeExchanges }: Props) {
 
   const stats = useMemo(() => {
     const total = filteredTrades.length;
-    const volume = filteredTrades.reduce((s, t) => s + notional(t), 0);
-    const fees = filteredTrades.reduce((s, t) => s + t.fee, 0);
+    const volume = filteredTrades.reduce((s, t) => s + num(t.notional), 0);
+    const fees = filteredTrades.reduce((s, t) => s + num(t.fee), 0);
     const makers = filteredTrades.filter((t) => t.role === "maker").length;
     const makerPct = total > 0 ? (makers / total) * 100 : 0;
     return { total, volume, fees, makerPct };

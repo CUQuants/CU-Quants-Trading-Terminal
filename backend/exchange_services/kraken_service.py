@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 from proxy_client import new_idempotency_key
@@ -303,16 +304,20 @@ class KrakenService(ExchangeService):
         trades: List[TradeResponse] = []
         for trade_id, item in raw_trades.items():
             native_pair = item.get("pair", "")
-            fee_str = item.get("fee", "0")
+            # Keep Kraken's decimal strings exact; no float conversion.
+            price = Decimal(item.get("price") or "0")
+            size = Decimal(item.get("vol") or "0")
+            cost = item.get("cost")
             trades.append(TradeResponse(
                 id=trade_id,
                 order_id=item.get("ordertxid", ""),
                 pair=self._from_native_pair(native_pair),
                 exchange="kraken",
                 side=item.get("type", ""),
-                price=float(item.get("price", 0)),
-                size=float(item.get("vol", 0)),
-                fee=abs(float(fee_str)),
+                price=price,
+                size=size,
+                notional=Decimal(cost) if cost else price * size,
+                fee=abs(Decimal(item.get("fee") or "0")),
                 fee_currency=self._get_quote_ccy(self._from_native_pair(native_pair)),
                 # Kraken reports liquidity in the boolean `maker` field; `misc`
                 # only carries flags like "closing"/"initiated", never "maker".

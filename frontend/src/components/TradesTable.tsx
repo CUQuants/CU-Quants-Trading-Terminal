@@ -1,5 +1,5 @@
 import type { Trade } from "../types/trades";
-import { formatNum, formatTime, capitalize } from "../utils/format";
+import { formatExact, formatTime, capitalize } from "../utils/format";
 import { SortHeader } from "./ui/SortHeader";
 
 export type SortKey =
@@ -20,10 +20,6 @@ interface Props {
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (key: SortKey) => void;
-}
-
-function notional(t: Trade) {
-  return t.price * t.size;
 }
 
 export function TradesTable({ trades, sortKey, sortDir, onSort }: Props) {
@@ -102,16 +98,16 @@ export function TradesTable({ trades, sortKey, sortDir, onSort }: Props) {
               </span>
             </td>
             <td className="px-3 py-2 text-right tabular-nums">
-              {formatNum(t.price, t.price < 1 ? 6 : 2)}
+              {formatExact(t.price)}
             </td>
             <td className="px-3 py-2 text-right tabular-nums">
-              {formatNum(t.size, 6)}
+              {formatExact(t.size)}
             </td>
             <td className="px-3 py-2 text-right tabular-nums text-white/70">
-              ${formatNum(notional(t))}
+              {formatExact(t.notional)}
             </td>
             <td className="px-3 py-2 text-right tabular-nums text-white/50 truncate">
-              {formatNum(t.fee, 6)} {t.fee_currency}
+              {formatExact(t.fee)} {t.fee_currency}
             </td>
             <td className="px-3 py-2">
               <span

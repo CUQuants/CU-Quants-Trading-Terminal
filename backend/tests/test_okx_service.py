@@ -8,6 +8,7 @@ way it always did.
 """
 
 import os
+from decimal import Decimal
 import sys
 
 import pytest
@@ -96,9 +97,10 @@ async def test_get_trades_parses_fills_correctly(okx, proxy):
     assert t0.pair == "SOL/USD"
     assert t0.exchange == "okx"
     assert t0.side == "buy"
-    assert t0.price == 82.01
-    assert t0.size == 1.0
-    assert t0.fee == 0.002  # abs() applied
+    assert t0.price == Decimal("82.01")
+    assert t0.size == Decimal("1.0")
+    assert t0.notional == Decimal("82.010")
+    assert t0.fee == Decimal("0.002")  # abs() applied
     assert t0.fee_currency == "SOL"
     assert t0.role == "maker"
     assert t0.timestamp == "1730385593000"
@@ -107,7 +109,9 @@ async def test_get_trades_parses_fills_correctly(okx, proxy):
     assert t1.pair == "BTC/USD"
     assert t1.side == "sell"
     assert t1.role == "taker"
-    assert t1.fee == 0.095
+    assert t1.fee == Decimal("0.095")
+    assert t1.model_dump(mode="json")["price"] == "95000.50"
+    assert t1.model_dump(mode="json")["notional"] == "95.00050"
 
 
 @pytest.mark.asyncio

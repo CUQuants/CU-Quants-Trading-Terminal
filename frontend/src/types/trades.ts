@@ -6,9 +6,12 @@ export interface Trade {
   pair: string;
   exchange: Exchange;
   side: "buy" | "sell";
-  price: number;
-  size: number;
-  fee: number;
+  // Exact decimal strings from the exchange (e.g. "95000.12340"). Never
+  // round-trip these through Number for display; use formatExact.
+  price: string;
+  size: string;
+  notional: string;
+  fee: string;
   fee_currency: string;
   role: "maker" | "taker";
   timestamp: string;

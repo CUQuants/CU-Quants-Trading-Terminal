@@ -8,6 +8,7 @@ parsing of what comes back.
 """
 
 import os
+from decimal import Decimal
 import sys
 
 import pytest
@@ -349,13 +350,35 @@ async def test_get_trades_parses_fills_once_they_are_routed(kraken, proxy):
     assert isinstance(by_id["TXNID-BTC-001"], TradeResponse)
     assert by_id["TXNID-BTC-001"].pair == "BTC/USD"
     assert by_id["TXNID-BTC-001"].side == "sell"
-    assert by_id["TXNID-SOL-001"].fee == 0.002
+    assert by_id["TXNID-SOL-001"].fee == Decimal("0.002")
     # Kraken sends epoch seconds; the terminal expects milliseconds like OKX.
     assert by_id["TXNID-BTC-001"].timestamp == "1730385600000"
     assert by_id["TXNID-SOL-001"].timestamp == "1730385593000"
     # Liquidity role comes from Kraken's boolean `maker` field, not `misc`.
     assert by_id["TXNID-SOL-001"].role == "maker"
     assert by_id["TXNID-BTC-001"].role == "taker"
+
+
+@pytest.mark.asyncio
+async def test_fill_amounts_keep_krakens_exact_digits(kraken, proxy):
+    proxy.set("get_fills", {"error": [], "result": {"count": 2, "trades": {
+        "T-SMALL": {"ordertxid": "O1", "pair": "XXBTZUSD", "time": 1730385600.0, "type": "buy",
+                    "price": "95000.12345", "cost": "0.00950001", "fee": "-0.00000010",
+                    "vol": "0.00000010", "misc": ""},
+        "T-NOCOST": {"ordertxid": "O2", "pair": "XXBTZUSD", "time": 1730385601.0, "type": "sell",
+                     "price": "1.0001", "fee": "0.0001", "vol": "3", "misc": ""},
+    }}})
+
+    by_id = {t.id: t.model_dump(mode="json") for t in await kraken.get_trades()}
+
+    # Serialized as Kraken's own digits: no float rounding, no exponent form.
+    assert by_id["T-SMALL"]["price"] == "95000.12345"
+    assert by_id["T-SMALL"]["size"] == "0.00000010"
+    assert by_id["T-SMALL"]["fee"] == "0.00000010"
+    # Kraken's `cost` is the notional when present...
+    assert by_id["T-SMALL"]["notional"] == "0.00950001"
+    # ...and price * vol, computed exactly, when it is not.
+    assert by_id["T-NOCOST"]["notional"] == "3.0003"
 
 
 def _fills_page(start: int, n: int, total: int) -> dict:
