@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy.sh — break-glass deploy from a laptop.
+# deploy.sh — break-glass: deploy directly to the server from a laptop.
 #
 # The normal way to deploy is the "Deploy" workflow in GitHub Actions (a
 # button; it deploys main). This script ships exactly the same kind of bundle
