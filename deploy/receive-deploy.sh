@@ -50,9 +50,13 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 say()  { printf '[receive-deploy] %s\n' "$*"; }
 fail() { printf '[receive-deploy] error: %s\n' "$*" >&2; exit 1; }
 
-# One deploy/rollback at a time.
-exec 9>"$BASE/.deploy.lock"
-flock -n 9 || fail "another deploy or rollback is in progress"
+# One deploy/rollback at a time. (`status` doesn't take the lock, so it works
+# even before /srv/cuq-terminal belongs to cuqterm, and during a deploy.)
+take_lock() {
+  [ -w "$BASE" ] || fail "$BASE is not writable by $(id -un) — finish the one-time setup (deploy/README.md, step 4)"
+  exec 9>"$BASE/.deploy.lock"
+  flock -n 9 || fail "another deploy or rollback is in progress"
+}
 
 point() {  # point <link> <target>: atomic symlink swap
   ln -sfn "$2" "$1.new"
@@ -180,8 +184,8 @@ rollback() {
 }
 
 case "${SSH_ORIGINAL_COMMAND:-status}" in
-  deploy)   deploy ;;
-  rollback) rollback ;;
+  deploy)   take_lock; deploy ;;
+  rollback) take_lock; rollback ;;
   status)   status ;;
   *)        fail "refused: only 'deploy', 'rollback' or 'status'" ;;
 esac
