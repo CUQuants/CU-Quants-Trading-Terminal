@@ -26,7 +26,10 @@ EnvironmentFile=/srv/cuq-terminal/.env
 # process's memory, so a second worker would not know about them.
 # --proxy-headers / --forwarded-allow-ips: believe Caddy's X-Forwarded-For
 # (and only Caddy's), so the login throttle sees the trader's real IP.
-ExecStart=/srv/cuq-terminal/current/backend/.venv/bin/uvicorn app:app \
+# `python -m uvicorn`, not .venv/bin/uvicorn: the venv's python is a symlink
+# that works wherever the release lives, while entry-point scripts carry an
+# absolute shebang.
+ExecStart=/srv/cuq-terminal/current/backend/.venv/bin/python -m uvicorn app:app \
     --host 127.0.0.1 --port 8100 --workers 1 \
     --proxy-headers --forwarded-allow-ips 127.0.0.1 \
     --no-server-header

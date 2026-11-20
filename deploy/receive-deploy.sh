@@ -121,29 +121,41 @@ deploy() {
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || fail "DEPLOYED does not start with a commit sha"
   say "received $(cat "$incoming/DEPLOYED")"
 
-  # Shared log directory, so order-event logs survive deploys.
-  rm -rf "$incoming/backend/logs"
-  ln -s "$BASE/logs" "$incoming/backend/logs"
-
-  say "installing Python dependencies"
-  ( cd "$incoming/backend" && uv sync --frozen --no-dev --quiet ) || fail "uv sync failed"
-
-  # Catch an app that can't even import before it replaces a working one.
-  # (load_dotenv finds $BASE/.env by walking up from the release.)
-  ( cd "$incoming/backend" && .venv/bin/python -c "import app" ) \
-    || fail "the new release fails to import; nothing was switched"
-
+  # Move into the release's FINAL path before anything is installed: uv
+  # writes absolute paths (script shebangs) into the venv, so a venv built in
+  # .incoming.* and then renamed is broken — "No such file or directory" when
+  # systemd execs .venv/bin/uvicorn.
   local release
   release="$RELEASES/$(date -u +%Y%m%dT%H%M%SZ)-${sha:0:7}"
   mv "$incoming" "$release"
+  INCOMING="$release"   # still removed on failure, until it is switched to
+
+  # Shared log directory, so order-event logs survive deploys.
+  rm -rf "$release/backend/logs"
+  ln -s "$BASE/logs" "$release/backend/logs"
+
+  say "installing Python dependencies"
+  ( cd "$release/backend" && uv sync --frozen --no-dev --quiet ) || fail "uv sync failed"
+
+  # Catch an app that can't even import before it replaces a working one.
+  # (load_dotenv finds $BASE/.env by walking up from the release.)
+  ( cd "$release/backend" && .venv/bin/python -c "import app" ) \
+    || fail "the new release fails to import; nothing was switched"
+
+  # Kept from here on, even if unhealthy, so it can be inspected.
   INCOMING=""
   trap - EXIT
 
+  # Only a release that has passed its health check (marked .healthy) is
+  # ever a rollback target.
   local old=""
-  [ -L "$BASE/current" ] && old="$(readlink -f "$BASE/current")"
+  if [ -L "$BASE/current" ] && [ -e "$BASE/current/.healthy" ]; then
+    old="$(readlink -f "$BASE/current")"
+  fi
 
   say "switching to $(basename "$release") and restarting (signs every trader out)"
   if switch_to "$release"; then
+    touch "$release/.healthy"
     [ -n "$old" ] && point "$BASE/previous" "$old"
     say "healthy"
   else
@@ -153,7 +165,9 @@ deploy() {
       switch_to "$old" || fail "rollback is unhealthy too — investigate on the box"
       fail "new release was unhealthy; rolled back to $(basename "$old")"
     fi
-    fail "new release is unhealthy and there is nothing to roll back to"
+    # Nothing healthy to return to: stop rather than crash-loop every 2 s.
+    systemctl --user stop "$UNIT" || true
+    fail "new release is unhealthy and there is no healthy release to roll back to; service stopped"
   fi
 
   # Keep the newest KEEP releases, and never the ones current/previous use.
@@ -167,7 +181,8 @@ deploy() {
 }
 
 rollback() {
-  [ -L "$BASE/previous" ] || fail "no previous release to roll back to"
+  [ -L "$BASE/previous" ] && [ -e "$BASE/previous/.healthy" ] \
+    || fail "no healthy previous release to roll back to"
   local cur prev
   cur="$(readlink -f "$BASE/current")"
   prev="$(readlink -f "$BASE/previous")"
