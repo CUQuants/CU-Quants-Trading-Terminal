@@ -6,6 +6,11 @@ Trading Gateway, so the terminal itself holds no exchange keys.
 
 ---
 
+## **Important** Contributing Guideline
+
+All new commits pull requests must be push to branch staging. 
+Once the branch is reviewed, leadership will merge to main with CI/CD pipeline
+
 ## Signing in
 
 Whether you use the hosted terminal or run it yourself, you sign in the same

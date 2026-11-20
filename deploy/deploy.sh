@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# deploy.sh — build the terminal locally and ship it to 178.105.55.5.
+# usage: deploy.sh - deploy directly to server
 #
 # Run from a Mac with `ssh cuq-proxy` working (the ~/.ssh/config alias for
-# admin@178.105.55.5). Does NOT touch Caddy or the gateway: first-time setup
+# admin@server_ip). Does NOT touch Caddy or the gateway: first-time setup
 # (uv, the systemd unit, the Caddy block, /srv/cuq-terminal/.env) is a manual,
 # one-off step — see deploy/README.md.
 #
 #   deploy/deploy.sh              # build, rsync, uv sync, restart, health check
 #   DRY_RUN=1 deploy/deploy.sh    # build, then show what rsync would change
-#   SSH_HOST=admin@178.105.55.5 deploy/deploy.sh
+#   SSH_HOST=admin@server_ip     deploy/deploy.sh
 #
 # NOTE: restarting the backend signs every trader out (their secrets are held
 # in memory only). Deploy outside trading hours, or warn people first.
