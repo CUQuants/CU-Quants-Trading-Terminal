@@ -129,6 +129,9 @@ deploy() {
   release="$RELEASES/$(date -u +%Y%m%dT%H%M%SZ)-${sha:0:7}"
   mv "$incoming" "$release"
   INCOMING="$release"   # still removed on failure, until it is switched to
+  # mktemp -d made it 0700; Caddy (its own user) must be able to traverse it
+  # to serve frontend/, or every page is a 403.
+  chmod 755 "$release"
 
   # Shared log directory, so order-event logs survive deploys.
   rm -rf "$release/backend/logs"

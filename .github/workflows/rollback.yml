@@ -37,6 +37,8 @@ jobs:
         env:
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
         run: |
+          DEPLOY_HOST="$(printf '%s' "$DEPLOY_HOST" | tr -d '[:space:]')"
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::Set the DEPLOY_HOST variable on the production environment"; exit 1; }
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
               -o ClearAllForwardings=yes -o ConnectTimeout=20 \
@@ -45,7 +47,12 @@ jobs:
       - name: Check the public site
         env:
           TERMINAL_URL: ${{ vars.TERMINAL_URL }}
-        run: curl -fsS -m 15 "$TERMINAL_URL/api/"
+        run: |
+          # Variables pasted into GitHub's UI easily pick up a stray space or
+          # newline, which curl/ssh reject with an unhelpful error.
+          TERMINAL_URL="$(printf '%s' "$TERMINAL_URL" | tr -d '[:space:]')"; TERMINAL_URL="${TERMINAL_URL%/}"
+          [ -n "$TERMINAL_URL" ] || { echo "::error::Set the TERMINAL_URL variable on the production environment"; exit 1; }
+          curl -fsS -m 15 "$TERMINAL_URL/api/"
 
       - name: Remove the deploy key
         if: always()
