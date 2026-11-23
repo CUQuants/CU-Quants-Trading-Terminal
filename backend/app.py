@@ -16,6 +16,7 @@ from routes.trades import router as trades_router
 from routes.account import router as account_router
 from routes.reporting import router as reporting_router
 from routes.pnl import router as pnl_router
+from routes.bots import router as bots_router
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +82,7 @@ def create_app(settings: AuthSettings | None = None) -> FastAPI:
     app.include_router(account_router)
     app.include_router(reporting_router)
     app.include_router(pnl_router)
+    app.include_router(bots_router)
 
     @app.get("/")
     async def health_check():

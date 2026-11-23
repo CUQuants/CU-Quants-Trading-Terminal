@@ -4,7 +4,7 @@ import { useOrderEvents } from "../contexts/OrderEventsContext";
 import { useAuth } from "../contexts/AuthContext";
 import quantsLogo from "../assets/quants_dark.png";
 
-export type View = "dashboard" | "trades" | "account" | "reporting" | "pnl";
+export type View = "dashboard" | "trades" | "bots" | "account" | "reporting" | "pnl";
 
 const STATUS_COLORS: Record<string, string> = {
   connected: "bg-green-500 shadow-[0_0_6px_theme(colors.green.500)]",
@@ -81,6 +81,11 @@ export function DashboardHeader({ currentView, onViewChange }: HeaderProps) {
             label="Trades"
             active={currentView === "trades"}
             onClick={() => onViewChange("trades")}
+          />
+          <TabButton
+            label="Bot Monitor"
+            active={currentView === "bots"}
+            onClick={() => onViewChange("bots")}
           />
           <TabButton
             label="Account"
