@@ -10,6 +10,7 @@ import { ActiveOrdersProvider } from "./contexts/ActiveOrdersContext";
 import { DashboardHeader, type View } from "./components/DashboardHeader";
 import { Dashboard } from "./components/Dashboard";
 import { TradesView } from "./components/TradesView";
+import { BotMonitorView } from "./components/BotMonitorView";
 import { AccountView } from "./components/AccountView";
 import { ReportingView } from "./components/ReportingView";
 import { PnlView } from "./components/PnlView";
@@ -62,6 +63,7 @@ function Terminal() {
               {currentView === "trades" && (
                 <TradesView activeExchanges={activeExchanges} />
               )}
+              {currentView === "bots" && <BotMonitorView />}
               {currentView === "account" && (
                 <AccountView activeExchanges={activeExchanges} />
               )}
