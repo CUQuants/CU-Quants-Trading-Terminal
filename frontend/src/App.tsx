@@ -14,6 +14,7 @@ import { BotMonitorView } from "./components/BotMonitorView";
 import { AccountView } from "./components/AccountView";
 import { ReportingView } from "./components/ReportingView";
 import { PnlView } from "./components/PnlView";
+import { RiskView } from "./components/RiskView";
 import { LoginPage } from "./components/LoginPage";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
@@ -68,6 +69,7 @@ function Terminal() {
                 <AccountView activeExchanges={activeExchanges} />
               )}
               {currentView === "pnl" && <PnlView />}
+              {currentView === "risk" && <RiskView />}
               {currentView === "reporting" && <ReportingView />}
             </div>
           </ActiveOrdersProvider>
