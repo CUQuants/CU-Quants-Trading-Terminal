@@ -67,6 +67,8 @@ class ProxySession:
     #: exchange action, so it isn't `POST /v1/{exchange}` and the SDK's
     #: `acall` can't reach it.
     PNL_PATH = "/v1/rmu/pnl"
+    #: The gateway's risk status route: RMU Core's kill switch, read-only.
+    RISK_PATH = "/v1/rmu/risk"
 
     def __init__(
         self,
@@ -90,7 +92,7 @@ class ProxySession:
         self._client = ProxyClient.for_operator(
             base_url, api_key, secret, operator_id, operator_name, timeout=timeout
         )
-        # For the PnL route only. Its success body is the RMU's report at the
+        # For the RMU read routes only (PnL, risk status). Their success body is the RMU's report at the
         # top level, not the Proxy's usual `{"data": ...}` envelope.
         self._http = httpx.AsyncClient(timeout=timeout)
 
@@ -140,10 +142,24 @@ class ProxySession:
         TODO: move into proxy-client as `get_pnl()` (trading-gateway ROADMAP)
         and call that instead.
         """
+        return await self._signed_read(self.PNL_PATH, {"group_by": group_by})
+
+    async def get_risk_status(self) -> dict[str, Any]:
+        """The RMU's risk status: `POST /v1/rmu/risk` on the gateway, which
+        returns `{"kill_switch": <RMU Core's GET /v1/kill-switch>}` unchanged.
+
+        Signed like `get_pnl`. Raises a `ProxyError` (code
+        `RISK_STATUS_UNAVAILABLE` when the gateway can't reach the RMU or the
+        route isn't configured there).
+        """
+        return await self._signed_read(self.RISK_PATH, {})
+
+    async def _signed_read(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """One signed `POST` to a gateway RMU read route; the body back as-is."""
         body = json.dumps({
             "operator_id": self.operator_id,
             "operator_name": self.operator_name,
-            "payload": {"group_by": group_by},
+            "payload": payload,
         }).encode()
         timestamp = str(int(time.time()))
         nonce = uuid.uuid4().hex
@@ -152,13 +168,13 @@ class ProxySession:
             "X-Timestamp": timestamp,
             "X-Nonce": nonce,
             "X-Signature": compute_signature(
-                self._secret.encode("utf-8"), "POST", self.PNL_PATH, timestamp, nonce, body,
+                self._secret.encode("utf-8"), "POST", path, timestamp, nonce, body,
             ),
             "Content-Type": "application/json",
         }
         try:
             # `content=`, never `json=`: the bytes sent must be the bytes signed.
-            response = await self._http.post(f"{self._base}{self.PNL_PATH}", content=body, headers=headers)
+            response = await self._http.post(f"{self._base}{path}", content=body, headers=headers)
         except httpx.RequestError as exc:
             raise ProxyUnreachableError(str(exc)) from exc
 
