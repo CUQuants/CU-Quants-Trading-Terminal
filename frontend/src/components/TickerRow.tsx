@@ -3,7 +3,7 @@ import type { Exchange, OrderbookData, OrderbookLevel } from "../types/orderbook
 import { useActiveOrders } from "../contexts/ActiveOrdersContext";
 import { formatNum } from "../utils/format";
 
-const VISIBLE = 5;
+const DEFAULT_LEVELS = 5;
 
 interface Props {
   exchange: Exchange;
@@ -12,6 +12,8 @@ interface Props {
   isSelected: boolean;
   onClick: () => void;
   onRemove: () => void;
+  /** Book levels shown per side (default 5). */
+  levels?: number;
 }
 
 function MiniLevel({
@@ -61,6 +63,7 @@ export function TickerRow({
   isSelected,
   onClick,
   onRemove,
+  levels = DEFAULT_LEVELS,
 }: Props) {
   const { hasOrderAtPrice } = useActiveOrders();
 
@@ -68,8 +71,8 @@ export function TickerRow({
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0)
       return { bidLevels: [], askLevels: [], maxQty: 0, spread: null };
 
-    const bids = orderbook.bids.slice(0, VISIBLE);
-    const asks = orderbook.asks.slice(0, VISIBLE);
+    const bids = orderbook.bids.slice(0, levels);
+    const asks = orderbook.asks.slice(0, levels);
     const allQty = [...bids, ...asks].map((l) => l.qty);
     const bestBid = bids[0].price;
     const bestAsk = asks[0].price;
@@ -82,7 +85,7 @@ export function TickerRow({
       maxQty: Math.max(...allQty, 0),
       spread: { value: val, bps: mid > 0 ? (val / mid) * 10000 : 0 },
     };
-  }, [orderbook]);
+  }, [orderbook, levels]);
 
   const hasData = bidLevels.length > 0 && askLevels.length > 0;
 

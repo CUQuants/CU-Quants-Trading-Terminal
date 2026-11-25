@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { cancelOrder, ApiError } from "../api/orders";
 import type { Exchange } from "../types/orderbook";
+import type { Order } from "../types/orders";
 
 export function useCancelOrder(exchange: Exchange) {
   const queryClient = useQueryClient();
@@ -14,6 +15,11 @@ export function useCancelOrder(exchange: Exchange) {
       queryClient.invalidateQueries({
         queryKey: ["orders", exchange, variables.pair],
       });
+      // Drop it from the Open Orders panel without refetching; that list
+      // only reloads when the panel is reopened.
+      queryClient.setQueryData<Order[]>(["openOrders", exchange], (prev) =>
+        prev?.filter((o) => o.id !== variables.orderId),
+      );
       queryClient.invalidateQueries({
         queryKey: ["account", "cash", exchange, variables.pair],
       });

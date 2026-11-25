@@ -8,6 +8,12 @@ import { useGeminiWs } from "../contexts/GeminiWsContext";
 import { RowConfigPanel } from "./RowConfigPanel";
 import { TickerRow } from "./TickerRow";
 import { OrderPanel } from "./OrderPanel";
+import { OpenOrdersPanel } from "./OpenOrdersPanel";
+
+const OPEN_ORDERS_COLLAPSED_KEY = "dashboard.openOrdersCollapsed";
+/** Book levels per side in each ticker row: fewer while the open-orders panel takes width. */
+const LEVELS_WITH_PANEL = 4;
+const LEVELS_WITHOUT_PANEL = 5;
 
 interface Props {
   config: RowConfig;
@@ -26,6 +32,16 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
   const krakenWs = useKrakenWs();
   const geminiWs = useGeminiWs();
   const [selected, setSelected] = useState<SelectedTicker | null>(null);
+  const [ordersCollapsed, setOrdersCollapsed] = useState(
+    () => localStorage.getItem(OPEN_ORDERS_COLLAPSED_KEY) === "true",
+  );
+
+  function toggleOrdersCollapsed() {
+    setOrdersCollapsed((prev) => {
+      localStorage.setItem(OPEN_ORDERS_COLLAPSED_KEY, String(!prev));
+      return !prev;
+    });
+  }
 
   useEffect(() => {
     for (const pair of config.exchanges.okx) okxWs.subscribe(pair);
@@ -81,43 +97,51 @@ export function Dashboard({ config, onAddPair, onRemovePair }: Props) {
         onAdd={handleAdd}
       />
 
-      <main className="flex-1">
-        {allTickers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-white/30">
-            <p className="text-lg mb-2">No pairs configured</p>
-            <p className="text-sm">
-              Use the controls above to add an exchange/pair to get started.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-white/30 border-b border-white/10">
-              <span className="w-12">Exch</span>
-              <span className="w-20">Pair</span>
-              <div className="flex flex-1 min-w-0">
-                <span className="flex-1 text-right">Bids</span>
-                <span className="px-2 mx-1 invisible">000.00</span>
-                <span className="flex-1">Asks</span>
-              </div>
-              <span className="w-5" />
+      <div className="flex flex-1 min-h-0">
+        <main className="flex-1 min-w-0">
+          {allTickers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-white/30">
+              <p className="text-lg mb-2">No pairs configured</p>
+              <p className="text-sm">
+                Use the controls above to add an exchange/pair to get started.
+              </p>
             </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 px-4 py-2 text-[10px] uppercase tracking-wider text-white/30 border-b border-white/10">
+                <span className="w-12">Exch</span>
+                <span className="w-20">Pair</span>
+                <div className="flex flex-1 min-w-0">
+                  <span className="flex-1 text-right">Bids</span>
+                  <span className="px-2 mx-1 invisible">000.00</span>
+                  <span className="flex-1">Asks</span>
+                </div>
+                <span className="w-5" />
+              </div>
 
-            {allTickers.map(({ exchange, pair }) => (
-              <TickerRow
-                key={`${exchange}-${pair}`}
-                exchange={exchange}
-                pair={pair}
-                orderbook={getOrderbook(exchange, pair)}
-                isSelected={
-                  selected?.exchange === exchange && selected?.pair === pair
-                }
-                onClick={() => setSelected({ exchange, pair })}
-                onRemove={() => handleRemove(exchange, pair)}
-              />
-            ))}
-          </>
-        )}
-      </main>
+              {allTickers.map(({ exchange, pair }) => (
+                <TickerRow
+                  key={`${exchange}-${pair}`}
+                  exchange={exchange}
+                  pair={pair}
+                  orderbook={getOrderbook(exchange, pair)}
+                  isSelected={
+                    selected?.exchange === exchange && selected?.pair === pair
+                  }
+                  onClick={() => setSelected({ exchange, pair })}
+                  onRemove={() => handleRemove(exchange, pair)}
+                  levels={ordersCollapsed ? LEVELS_WITHOUT_PANEL : LEVELS_WITH_PANEL}
+                />
+              ))}
+            </>
+          )}
+        </main>
+
+        <OpenOrdersPanel
+          collapsed={ordersCollapsed}
+          onToggle={toggleOrdersCollapsed}
+        />
+      </div>
 
       {selected && (
         <>

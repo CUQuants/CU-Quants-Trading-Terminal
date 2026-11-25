@@ -135,6 +135,13 @@ export function OrderEventsProvider({ activeExchanges, children }: Props) {
             ["orders", exchange, data.pair],
             (prev) => applyOrderEvent(prev, data),
           );
+          // The dashboard's account-wide Open Orders list, if loaded.
+          if (queryClient.getQueryData(["openOrders", exchange])) {
+            queryClient.setQueryData<Order[]>(
+              ["openOrders", exchange],
+              (prev) => applyOrderEvent(prev, data),
+            );
+          }
         } else if (data.type === "status") {
           setStatus((prev) => ({
             ...prev,

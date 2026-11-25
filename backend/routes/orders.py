@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query, HTTPException
 
@@ -48,8 +48,13 @@ async def order_events_ws(websocket: WebSocket, exchange: str):
 # ------------------------------------------------------------------
 
 @router.get("/{exchange}", response_model=List[OrderResponse])
-async def get_orders(exchange: str, pair: str = Query(...), container: ServiceContainer = Depends(current_container)):
-    """Fetch open orders for a specific exchange and normalized pair."""
+async def get_orders(
+    exchange: str,
+    pair: Optional[str] = Query(None),
+    container: ServiceContainer = Depends(current_container),
+):
+    """Fetch open orders on an exchange: for one normalized pair, or every
+    open order on the account when `pair` is omitted."""
     service = container.get_service(exchange)
     return await service.get_orders(pair=pair)
 

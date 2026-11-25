@@ -294,6 +294,7 @@ async def test_sweep_closes_idle_sessions():
 
 @pytest.mark.parametrize("method,path", [
     ("GET", "/orders/okx?pair=BTC/USD"),
+    ("GET", "/orders/okx"),
     ("POST", "/orders/okx"),
     ("DELETE", "/orders/okx/123?pair=BTC/USD"),
     ("GET", "/trades/okx"),
